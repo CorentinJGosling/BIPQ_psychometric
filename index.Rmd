@@ -124,7 +124,9 @@ label(dat$diplome_ini) <- "Niveau de diplôme"
 label(dat$DEM_3_Aide) <- "Statut d'aidant"
 label(dat$Score_lubben) <- "Score Lubben"
 
-table1(~ factor(Sexe) + factor(age_classe) + age + factor(situation_emploi_ini) + factor(situation_financiere) + factor(diplome_ini)+ factor(DEM_3_Aide) + Score_lubben, data=dat, caption=caption)
+# peux etre ici séparer par H/F pour + lisibilité ? 
+# pas la peine de tout factor() alors que tu l'as fait plus haut
+table1(~  + factor(age_classe) + age + factor(situation_emploi_ini) + factor(situation_financiere) + factor(diplome_ini)+ factor(DEM_3_Aide) + Score_lubben | Sexe, data=dat, caption=caption)
 
                              
 
@@ -164,15 +166,19 @@ label(dat$Score_whodas) <- "Score whodas"
 label(dat$score_GAD7) <- "Score GAD7"
 label(dat$Score_autostigma) <- "Score autostigma"
 
+# passer en EN + | Sexe aussi je pense
 table1(~ score_PHQ9_f + score_PHQ9 + DIAG_7 + DIAG_NOW_1 + DIAG_NOW_3 + DIAG_NOW_3_Age + diff_mois + DIAG_NOW_2 + nb_maladies_psy + nb_maladies_somatiques + nb_PEC1 + nb_PEC2 + DIAG_6 + PEC_PREV_10 + PEC_18 + PEC_12 + PEC_NOW_9 + Score_BIPQ + Score_whodas + score_GAD7 + Score_autostigma, data=dat, caption=caption)
 
 
 ```
 
-# S2. Variable description
+# S2. Variable description{.tabste}
 
 Description de la distribution des scores utilisés
+
+## BIPQ
 ```{r, , echo=FALSE}
+# .tabset sert à organiser plus proprement
 #cherry on the cake des résidus de modèles
 
 # BIPQ
@@ -187,7 +193,10 @@ ggplot(dat, aes(x = Score_BIPQ)) +
     y = "Density"
   ) +
   theme_minimal()
+```
 
+## PHQ-9
+```{r, , echo=FALSE}
 # PHQ-9
 ggplot(dat, aes(x = score_PHQ9)) +
   geom_histogram(aes(y = after_stat(density)),
@@ -200,7 +209,10 @@ ggplot(dat, aes(x = score_PHQ9)) +
     y = "Density"
   ) +
   theme_minimal()
+```
 
+## GAD-7
+```{r, , echo=FALSE}
 # GAD-7
 ggplot(dat, aes(x = score_GAD7)) +
   geom_histogram(aes(y = after_stat(density)),
@@ -213,7 +225,10 @@ ggplot(dat, aes(x = score_GAD7)) +
     y = "Density"
   ) +
   theme_minimal()
+```
 
+## SSS
+```{r, , echo=FALSE}
 # SSS
 ggplot(dat, aes(x = Score_autostigma)) +
   geom_histogram(aes(y = after_stat(density)),
@@ -234,11 +249,12 @@ ggplot(dat, aes(x = Score_autostigma)) +
 
 Je teste la normalité de la distribution des erreurs des items de la BIPQ. Si W > 0.98, la distribution est proche d'une loi normale. 
 -> est ce que c'est nécessaire de toutes les tester et surtout est ce que c'est la bonne manière de regarder la distribution des erreurs ?
-
+=> non on pourrait regarder la distribution des résidus des associations mais ça me semble OK de pas être plus royaliste que le roi (ok je viens de voir que c'est en dessosu, aprfait!)
 
 
 ```{r}
-
+## ici, regarde le package kableExtra pour faire des tables + jolies
+## https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html
 # tous mes items ont été remis dans le bon sens préalablement
 items <- c(
   "stigma_percept_1", "stigma_percept_2", "stigma_percept_3", "stigma_percept_4",
@@ -297,73 +313,6 @@ residuals_summary <- do.call(rbind, lapply(names(results_residuals), function(na
 residuals_summary[, c("model", "W", "p_value")]
 
 ```
-
-Quelques graphiques sur la distribution des erreurs : 
-
-
-```{r, echo=FALSE, message=FALSE}
-
-# test la normalité des erreurs (items BIPQ)
-# Variables
-x <- dat$stigma_percept_1
-y <- dat$stigma_percept_2
-
-
-# Modèle linéaire simple (pour obtenir les erreurs)
-fit <- lm(y ~ x)
-res <- resid(fit)
-
-# Visualisation de la distribution des erreurs
-par(mfrow = c(1,2))
-hist(res, breaks = 20, main = "Histogram of residuals item2~item1", xlab = "Residuals")
-qqnorm(res, main = "QQ-plot of residuals item2~item1")
-qqline(res)
-par(mfrow = c(1,1))
-
-
-
-# Variables
-x <- dat$stigma_percept_4
-y <- dat$stigma_percept_5
-
-
-# Modèle linéaire simple (pour obtenir les erreurs)
-fit <- lm(y ~ x)
-res <- resid(fit)
-
-# Visualisation de la distribution des erreurs
-par(mfrow = c(1,2))
-hist(res, breaks = 20, main = "Histogram of residuals item5~item4", xlab = "Residuals")
-qqnorm(res, main = "QQ-plot of residuals item5~item4")
-qqline(res)
-par(mfrow = c(1,1))
-
-
-
-# Variables
-x <- dat$stigma_percept_7
-y <- dat$stigma_percept_2
-
-
-# Modèle linéaire simple (pour obtenir les erreurs)
-fit <- lm(y ~ x)
-res <- resid(fit)
-
-# Visualisation de la distribution des erreurs
-par(mfrow = c(1,2))
-hist(res, breaks = 20, main = "Histogram of residuals item2~item7", xlab = "Residuals")
-qqnorm(res, main = "QQ-plot of residuals item2~item7")
-qqline(res)
-par(mfrow = c(1,1))
-
-
-```
-
-
-Au vu des résultats, est ce qu'il est pertinent d'utiliser pearson ou non ?? Certaines distributions se rapprochent d'une normale tandis que d'autre pas du tout (exemple avec item 2 et 7)
-
-J'ai vérifié les erreurs d'autres construits, en standardisant les scores au préalable (au score global pour la convergent / divergent validity ) 
-Je ne sais pas si c'est nécessaire.
 
 ```{r, echo=FALSE}
 ################ GAD7
