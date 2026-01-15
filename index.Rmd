@@ -1,12 +1,13 @@
 ---
-title: "Supplementary for : "
+title: 'Supplementary for : '
 author: "Miss Blandine, Prof Yannick, and the rest (the plebe people)"
-date: "2025-09-17"
-output: 
+date: '2025-09-17'
+output:
   html_document:
-    toc: true
-    toc_float: true
-    
+    toc: yes
+    toc_float: yes
+  pdat_document:
+    toc: yes
 ---
 
 
@@ -19,6 +20,7 @@ output:
 
 
 ```{r, echo=FALSE, message=FALSE, results='hide', warning=FALSE}
+
 # j'ai enlevé les install packages, énormément de place pour peu de bénéfice, on sait tous installer un package ici, nous sommes des gens civilisés :) 
 # {r, echo=FALSE, message=FALSE, results='hide', warning=FALSE} => veut dire de cacher le text (echo=FALSE) et l'output (des warning au chargement de chaque package)
 # globalement c'est une très mauvaise pratique de charger toutes les library car ça peut créer des conflicts. Pour les packages dont on utilise une seule fonction une fois, préférer nom_dupackage::nom_de_la_fonction()
@@ -32,89 +34,470 @@ library(parameters)
 library(datawizard)
 library(dplyr)
 library(kableExtra)
-#library(semTable) sem Table was removed from CRAN
 library(semTools)
-library(semPlot)
 library(tidySEM)
 library(lavaanPlot)
 library(BifactorIndicesCalculator)
 library(tidyLPA)
-
+library(table1)
 library(readxl)
 library(psych)
 library(corrplot)
+library(ggplot2)
 ```
 
 ```{r, echo=FALSE, message=FALSE, results='hide', warning=FALSE}
-df <- read_excel("C:/Users/Blandine _Thibout/Searches/Etude_psycho_BIPQ/CompareDep_redress_rakenorm_160525.xlsx")
 
-gad <- read_excel("C:/Users/Blandine _Thibout/Searches/Etude_psycho_BIPQ/pop_GAD7_20240403.xlsx")
-variables <-c("id_unik", "score_GAD7", "nerveux",	"inquiet",	"inquiet_exces",	"difficult_detente",	"agitation",	"tendance_contrarie",	"sentiment_peur"
+dat <- read.csv(
+  "C:/Users/bland/BIPQ_psychometric/Data_BIPQ.csv",
+  na.strings = "",
+  fileEncoding = "latin1",
+  stringsAsFactors = FALSE,
+  colClasses = "character"
 )
-gad<-gad[, c(variables)]
 
-# Forcer la conversion en numérique et traiter les erreurs de conversion
-# !!! NE JAMAIS FAIRE as.numeric sans as.character !!!
-# bon = df$poids_norm <- as.numeric(as.character(df$poids_norm))
-df$poids_norm <- as.numeric(df$poids_norm)
+num_vars <- c(
+  "age", 
+  "stigma_percept_1","stigma_percept_2","stigma_percept_3","stigma_percept_4",
+  "stigma_percept_5","stigma_percept_6","stigma_percept_7","stigma_percept_8", "Score_lubben", "score_PHQ9", "DIAG_NOW_3_Age", "nb_maladies_psy", "nb_maladies_somatiques", "nb_PEC1", "nb_PEC2","Score_BIPQ", "Score_whodas", "score_GAD7", "Score_autostigma"
+)
 
-# Vérifier le type après conversion
-str(df$poids_norm)
+dat[num_vars] <- lapply(dat[num_vars], function(x) as.numeric(x))
 
-# Garder uniquement les variables d’intérêt + poids
+
+#### Data management express
+# recup année début d'épisode en cours
+
+library(lubridate)
+# Convertir d'abord les dates (adapter le format si besoin, voir plus bas)
+dat$DIAG_NOW_4 <- as.POSIXct(dat$DIAG_NOW_4, tz = "Europe/Paris")
+dat$DateValidation_J0 <- as.POSIXct(dat$DateValidation_J0, tz = "Europe/Paris")
+
+# Puis calculer
+dat$annee_dep <- year(dat$DIAG_NOW_4)
+dat$diff_mois <- interval(dat$DIAG_NOW_4, dat$DateValidation_J0) %/% months(1)
+
+# Numeric
+dat$diff_mois <- as.numeric(dat$diff_mois)
+dat$annee_dep <- as.numeric(dat$annee_dep)
+
+dat <- dat %>%
+  mutate(age_classe = case_when(
+    age >= 18 & age < 25 ~ "18-24",
+    age >= 25 & age < 35 ~ "25-34",
+    age >= 35 & age < 45 ~ "35-44",
+    age >= 45 & age < 55 ~ "45-54",
+    age >= 55 & age < 65 ~ "55-64",
+    age >= 65 & age < 75 ~ "65-74",
+    age >= 75 & age <= 100 ~ "75+",
+    TRUE ~ NA_character_
+  ))
+
+
+# Garder uniquement les variables d’intérêt + poids pour l'EFA
 items <- c("stigma_percept_1", "stigma_percept_2", "stigma_percept_3", "stigma_percept_4",
            "stigma_percept_5", "stigma_percept_6", "stigma_percept_7", "stigma_percept_8")
 
-data_efa <- df[, c(items)]
+data_efa <- dat[, c(items)]
+
 
 ```
 
 # S1. Sample description
-```{r}
+```{r,, echo=FALSE}
 # ici on fait une table 1 de l'échantillon
 # https://www.rdocumentation.org/packages/table1/versions/1.5.1
+
+caption  <- "Charactéristiques sociodémographiques"
+
+dat$Sexe<-factor(dat$Sexe) 
+dat$age_classe<-factor(dat$age_classe) 
+dat$situation_emploi_ini<-factor(dat$situation_emploi_ini) 
+dat$situation_financiere<-factor(dat$situation_financiere) 
+dat$diplome_ini<-factor(dat$diplome_ini)
+dat$DEM_3_Aide<-factor(dat$DEM_3_Aide)
+
+label(dat$age_classe) <- "Classe d'âge"
+label(dat$situation_emploi_ini) <- "Situation d'emploi"
+label(dat$situation_financiere) <- "Situation financière"
+label(dat$diplome_ini) <- "Niveau de diplôme"
+label(dat$DEM_3_Aide) <- "Statut d'aidant"
+label(dat$Score_lubben) <- "Score Lubben"
+
+table1(~ factor(Sexe) + factor(age_classe) + age + factor(situation_emploi_ini) + factor(situation_financiere) + factor(diplome_ini)+ factor(DEM_3_Aide) + Score_lubben, data=dat, caption=caption)
+
+                             
+
+
+caption  <- "Charactéristiques cliniques"
+
+dat$score_PHQ9_f<-factor(dat$score_PHQ9_f) 
+dat$DIAG_7<-factor(dat$DIAG_7) 
+dat$DIAG_NOW_1<-factor(dat$DIAG_NOW_1) 
+dat$DIAG_NOW_3<-factor(dat$DIAG_NOW_3) 
+dat$DIAG_NOW_2<-factor(dat$DIAG_NOW_2)
+dat$DIAG_6<-factor(dat$DIAG_6) 
+dat$PEC_PREV_10<-factor(dat$PEC_PREV_10) 
+dat$PEC_18<-factor(dat$PEC_18)
+dat$PEC_12<-factor(dat$PEC_12) 
+dat$PEC_NOW_9<-factor(dat$PEC_NOW_9)
+
+label(dat$score_PHQ9_f) <- "Classe score PHQ9"
+label(dat$score_PHQ9) <- "Score PHQ9"
+label(dat$DIAG_7) <- "Diagnostic trouble bipolaire"
+label(dat$DIAG_NOW_1) <- "Diagnostic posé par : "
+label(dat$DIAG_NOW_3) <- "Nombre d'épisodes"
+label(dat$DIAG_NOW_3_Age) <- "Age au 1er épisode"
+label(dat$diff_mois) <- "Durée de l'épisode en cours (mois)"
+label(dat$DIAG_NOW_2) <- "Post partum"
+label(dat$nb_maladies_psy) <- "Comorbiditées psy"
+label(dat$nb_maladies_somatiques) <- "Comorbidités somatiques"
+label(dat$nb_PEC1) <- "Nombre d'antidépresseurs"
+label(dat$nb_PEC2) <- "Nombre de Thymorégulateurs"
+label(dat$DIAG_6) <- "Nombre d'hospiatalisations psy"
+label(dat$PEC_PREV_10) <- "Suivi d'une psychothérapie au cours de la vie"
+label(dat$PEC_18) <- "Recours à la médecine alternative"
+label(dat$PEC_12) <- "Participation réhabilitation cognitive"
+label(dat$PEC_NOW_9) <- "Psychothérapie dans les 12 derniers mois"
+label(dat$Score_BIPQ) <- "Score BIPQ"
+label(dat$Score_whodas) <- "Score whodas"
+label(dat$score_GAD7) <- "Score GAD7"
+label(dat$Score_autostigma) <- "Score autostigma"
+
+table1(~ score_PHQ9_f + score_PHQ9 + DIAG_7 + DIAG_NOW_1 + DIAG_NOW_3 + DIAG_NOW_3_Age + diff_mois + DIAG_NOW_2 + nb_maladies_psy + nb_maladies_somatiques + nb_PEC1 + nb_PEC2 + DIAG_6 + PEC_PREV_10 + PEC_18 + PEC_12 + PEC_NOW_9 + Score_BIPQ + Score_whodas + score_GAD7 + Score_autostigma, data=dat, caption=caption)
+
+
 ```
 
 # S2. Variable description
-```{r}
-# ici je veux voir des densités et histogrammes, et cherry on the cake des résidus de modèles 
+
+Description de la distribution des scores utilisés
+```{r, , echo=FALSE}
+#cherry on the cake des résidus de modèles
+
+# BIPQ
+ggplot(dat, aes(x = Score_BIPQ)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 10, fill = "grey80", color = "black",
+                 na.rm = TRUE) +
+  geom_density(na.rm = TRUE) +
+  labs(
+    title = "BIPQ score distribution",
+    x = "BIPQ score",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+# PHQ-9
+ggplot(dat, aes(x = score_PHQ9)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 10, fill = "grey80", color = "black",
+                 na.rm = TRUE) +
+  geom_density(na.rm = TRUE) +
+  labs(
+    title = "PHQ-9 score distribution",
+    x = "PHQ-9 score",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+# GAD-7
+ggplot(dat, aes(x = score_GAD7)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 10, fill = "grey80", color = "black",
+                 na.rm = TRUE) +
+  geom_density(na.rm = TRUE) +
+  labs(
+    title = "GAD-7 score distribution",
+    x = "GAD-7 score",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+# SSS
+ggplot(dat, aes(x = Score_autostigma)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 10, fill = "grey80", color = "black",
+                 na.rm = TRUE) +
+  geom_density(na.rm = TRUE) +
+  labs(
+    title = "Self stigma score distribution",
+    x = "Self stigma score",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+
+
 ```
+
+
+Je teste la normalité de la distribution des erreurs des items de la BIPQ. Si W > 0.98, la distribution est proche d'une loi normale. 
+-> est ce que c'est nécessaire de toutes les tester et surtout est ce que c'est la bonne manière de regarder la distribution des erreurs ?
+
+
+
+```{r}
+
+# tous mes items ont été remis dans le bon sens préalablement
+items <- c(
+  "stigma_percept_1", "stigma_percept_2", "stigma_percept_3", "stigma_percept_4",
+  "stigma_percept_5", "stigma_percept_6", "stigma_percept_7", "stigma_percept_8"
+)
+
+data_items <- dat[, items]
+
+results_residuals <- list()
+
+for (i in 1:(length(items) - 1)) {
+  for (j in (i + 1):length(items)) {
+
+    x <- data_items[[items[i]]]
+    y <- data_items[[items[j]]]
+
+    # Nettoyage NA
+    ok <- is.finite(x) & is.finite(y)
+    x <- x[ok]
+    y <- y[ok]
+
+    if (length(x) < 10) next
+
+    # Modèle linéaire
+    fit <- lm(y ~ x)
+    res <- resid(fit)
+
+    # Test de normalité
+    sh <- shapiro.test(res)
+
+    # Stockage
+    results_residuals[[paste(items[j], "~", items[i])]] <- list(
+      predictor = items[i],
+      outcome   = items[j],
+      n         = length(res),
+      W         = unname(sh$statistic),
+      p_value   = sh$p.value,
+      residuals = res
+    )
+  }
+}
+
+residuals_summary <- do.call(rbind, lapply(names(results_residuals), function(name) {
+  x <- results_residuals[[name]]
+  data.frame(
+    model = name,
+    predictor = x$predictor,
+    outcome = x$outcome,
+    n = x$n,
+    W = x$W,
+    p_value = x$p_value,
+    stringsAsFactors = FALSE
+  )
+}))
+
+residuals_summary[, c("model", "W", "p_value")]
+
+```
+
+Quelques graphiques sur la distribution des erreurs : 
+
+
+```{r, echo=FALSE, message=FALSE}
+
+# test la normalité des erreurs (items BIPQ)
+# Variables
+x <- dat$stigma_percept_1
+y <- dat$stigma_percept_2
+
+
+# Modèle linéaire simple (pour obtenir les erreurs)
+fit <- lm(y ~ x)
+res <- resid(fit)
+
+# Visualisation de la distribution des erreurs
+par(mfrow = c(1,2))
+hist(res, breaks = 20, main = "Histogram of residuals item2~item1", xlab = "Residuals")
+qqnorm(res, main = "QQ-plot of residuals item2~item1")
+qqline(res)
+par(mfrow = c(1,1))
+
+
+
+# Variables
+x <- dat$stigma_percept_4
+y <- dat$stigma_percept_5
+
+
+# Modèle linéaire simple (pour obtenir les erreurs)
+fit <- lm(y ~ x)
+res <- resid(fit)
+
+# Visualisation de la distribution des erreurs
+par(mfrow = c(1,2))
+hist(res, breaks = 20, main = "Histogram of residuals item5~item4", xlab = "Residuals")
+qqnorm(res, main = "QQ-plot of residuals item5~item4")
+qqline(res)
+par(mfrow = c(1,1))
+
+
+
+# Variables
+x <- dat$stigma_percept_7
+y <- dat$stigma_percept_2
+
+
+# Modèle linéaire simple (pour obtenir les erreurs)
+fit <- lm(y ~ x)
+res <- resid(fit)
+
+# Visualisation de la distribution des erreurs
+par(mfrow = c(1,2))
+hist(res, breaks = 20, main = "Histogram of residuals item2~item7", xlab = "Residuals")
+qqnorm(res, main = "QQ-plot of residuals item2~item7")
+qqline(res)
+par(mfrow = c(1,1))
+
+
+```
+
+
+Au vu des résultats, est ce qu'il est pertinent d'utiliser pearson ou non ?? Certaines distributions se rapprochent d'une normale tandis que d'autre pas du tout (exemple avec item 2 et 7)
+
+J'ai vérifié les erreurs d'autres construits, en standardisant les scores au préalable (au score global pour la convergent / divergent validity ) 
+Je ne sais pas si c'est nécessaire.
+
+```{r, echo=FALSE}
+################ GAD7
+# Variables
+x <- dat$Score_BIPQ
+y <- dat$score_GAD7
+
+# gestion valeurs manquantes
+ok <- is.finite(x) & is.finite(y)
+x <- x[ok]
+y <- y[ok]
+
+# Modèle linéaire simple (pour obtenir les erreurs)
+fit <- lm(scale(y) ~ scale(x))
+res <- resid(fit)
+
+# Visualisation de la distribution des erreurs
+par(mfrow = c(1,2))
+hist(res, breaks = 20, main = "Histogram of residuals GAD7~BIPQ", xlab = "Residuals")
+qqnorm(res, main = "QQ-plot of residuals GAD7~BIPQ")
+qqline(res)
+par(mfrow = c(1,1))
+
+
+
+################ PHQ9
+# Variables
+x <- dat$Score_BIPQ
+y <- dat$score_PHQ9
+
+# gestion valeurs manquantes
+ok <- is.finite(x) & is.finite(y)
+x <- x[ok]
+y <- y[ok]
+
+# Modèle linéaire simple (pour obtenir les erreurs)
+fit <- lm(scale(y) ~ scale(x))
+res <- resid(fit)
+
+# Visualisation de la distribution des erreurs
+par(mfrow = c(1,2))
+hist(res, breaks = 20, main = "Histogram of residuals PHQ9~BIPQ", xlab = "Residuals")
+qqnorm(res, main = "QQ-plot of residuals PHQ9~BIPQ")
+qqline(res)
+par(mfrow = c(1,1))
+
+################ whodas
+# Variables
+x <- dat$Score_BIPQ
+y <- dat$Score_whodas
+
+# gestion valeurs manquantes
+ok <- is.finite(x) & is.finite(y)
+x <- x[ok]
+y <- y[ok]
+
+# Modèle linéaire simple (pour obtenir les erreurs)
+fit <- lm(scale(y) ~ scale(x))
+res <- resid(fit)
+
+# Visualisation de la distribution des erreurs
+par(mfrow = c(1,2))
+hist(res, breaks = 20, main = "Histogram of residuals whodas~BIPQ", xlab = "Residuals")
+qqnorm(res, main = "QQ-plot of residuals whodas~BIPQ")
+qqline(res)
+par(mfrow = c(1,1))
+
+
+
+################ SSS
+# Variables
+x <- dat$Score_BIPQ
+y <- dat$Score_autostigma
+
+# gestion valeurs manquantes
+ok <- is.finite(x) & is.finite(y)
+x <- x[ok]
+y <- y[ok]
+
+# Modèle linéaire simple (pour obtenir les erreurs)
+fit <- lm(scale(y) ~ scale(x))
+res <- resid(fit)
+
+# Visualisation de la distribution des erreurs
+par(mfrow = c(1,2))
+hist(res, breaks = 20, main = "Histogram of residuals SSS~BIPQ", xlab = "Residuals")
+qqnorm(res, main = "QQ-plot of residuals SSS~BIPQ")
+qqline(res)
+par(mfrow = c(1,1))
+
+```
+
 
 # S3. Internal consistency{.tabset}
 
 ## Distribution des items
-```{r}
-# j'imagine que les yeux saignent, organiser dans une table ? 
-describe(data_efa$stigma_percept_1)$skew
-describe(data_efa$stigma_percept_1)$kurtosis
+```{r, echo=FALSE }
+vars <- paste0("stigma_percept_", 1:8)
 
-describe(data_efa$stigma_percept_2)$skew
-describe(data_efa$stigma_percept_2)$kurtosis
+skew_kurt_table <- data.frame(
+  skewness = sapply(vars, function(v) describe(data_efa[[v]])$skew),
+  kurtosis = sapply(vars, function(v) describe(data_efa[[v]])$kurtosis)
+)
 
-describe(data_efa$stigma_percept_3)$skew
-describe(data_efa$stigma_percept_3)$kurtosis
 
-describe(data_efa$stigma_percept_4)$skew
-describe(data_efa$stigma_percept_4)$kurtosis
+for (v in vars) {
 
-describe(data_efa$stigma_percept_5)$skew
-describe(data_efa$stigma_percept_5)$kurtosis
+  x <- data_efa[[v]]
+  x <- x[is.finite(x)]
 
-describe(data_efa$stigma_percept_6)$skew
-describe(data_efa$stigma_percept_6)$kurtosis
+  sk <- describe(x)$skew
+  ku <- describe(x)$kurtosis
 
-describe(data_efa$stigma_percept_7)$skew
-describe(data_efa$stigma_percept_7)$kurtosis
+  par(mfrow = c(1, 2))
 
-describe(data_efa$stigma_percept_8)$skew
-describe(data_efa$stigma_percept_8)$kurtosis
+  hist(
+    x,
+    breaks = 10,
+    main = paste(v, "\nSkew =", round(sk, 2), "| Kurt =", round(ku, 2)),
+    xlab = "Score",
+    col = "grey"
+  )
+
+  qqnorm(x, main = paste("QQ-plot", v))
+  qqline(x)
+
+  par(mfrow = c(1, 1))
+}
+
 
 ```
 
 ## ICC
 ```{r}
-# Supposons que ton dataframe s'appelle data_efa
-# et que tes items sont stigma_percept_1 à stigma_percept_5
 items <- data_efa[, c("stigma_percept_1",
                       "stigma_percept_2",
                       "stigma_percept_3",
@@ -139,7 +522,7 @@ corrplot(iic, method = "color", type = "upper",
 ```
 
 ## ITC
-```{r}
+#```{r}
 # Calculer Cronbach's alpha et les item-total correlations
 alpha_result <- alpha(items, check.keys = TRUE)
 
@@ -152,8 +535,8 @@ alpha_result$item.stats$r.drop
 
 ## Cronbach 
 
-```{r}
-# Alpha avec correction automatique des items inversés
+#```{r}
+# Alpha avec correction automatique des items inversés # revérifie l'item 4 et 7, mes items sont déjà tous renversés 
 alpha <- alpha(items, check.keys = TRUE)
 
 # Afficher les résultats complets
@@ -163,7 +546,7 @@ alpha
 
 ## Omega
 
-```{r}
+#```{r}
 # Omega total (unidimensionnel)
 omega_result <- omega(items, nfactors = 1, fm = "ml")  # fm = "ml" pour maximum likelihood
 
@@ -174,9 +557,9 @@ omega_result
 
 ## Floor ceiling
 
-```{r}
+#```{r}
 ### floor et ceiling effect 
-
+ #data visualisation du package summarytools avec datsummary est bien utile
 # Calculer floor et ceiling effect pour chaque item
 floor_ceiling <- sapply(items, function(x) {
   floor_effect <- sum(x == min(x, na.rm = TRUE)) / length(na.omit(x)) * 100
@@ -189,23 +572,20 @@ floor_ceiling <- t(floor_ceiling)
 floor_ceiling
 
 # Résumé complet et visuel de tous les items
-dfSummary(items,
+datSummary(items,
           headings = FALSE,   # pour afficher moins de texte
           graph.magnif = 0.8, # taille des graphiques
           valid.col = FALSE,  # cacher colonne des valeurs valides
           style = "grid")     # style visuel agréable
-# Ajouter floor/ceiling dans dfSummary
-summary_items <- dfSummary(items)
+# Ajouter floor/ceiling dans datSummary
+summary_items <- datSummary(items)
 print(summary_items, method = "render")  # pour affichage HTML dans RStudio <- merci !!!! il existe le package kableExtra qui est fait pour ça autrement
 ```
 
 # S4. 
-```{r}
-
-```
 
 
-```{r, eval=FALSE,include=FALSE}
+#```{r, eval=FALSE,include=FALSE}
 #######################################################################################
 #######################################################################################
 #################  Structural validity   ##############################################
@@ -256,29 +636,29 @@ summary(fit_multi_2, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
 #######################################################################################
 #######################################################################################
 
-dff <- merge(df, gad, by = "id_unik", all.x = TRUE)
+datf <- merge(dat, gad, by = "id_unik", all.x = TRUE)
 
-df_bis <- dff %>%
+dat_bis <- datf %>%
   select(score_PHQ9, Score_autostigma, Score_BIPQ, Score_whodas, score_GAD7)
-summary(df_bis)
+summary(dat_bis)
 
 # convergent validity 
 # 1- with simple correlation
-cor_spearman <- cor(df_bis$Score_BIPQ, df_bis$Score_autostigma, method = "spearman", use = "complete.obs")
+cor_spearman <- cor(dat_bis$Score_BIPQ, dat_bis$Score_autostigma, method = "spearman", use = "complete.obs")
 
 cor_spearman
-cor.test(df_bis$Score_BIPQ, df_bis$Score_autostigma, method = "spearman")
+cor.test(dat_bis$Score_BIPQ, dat_bis$Score_autostigma, method = "spearman")
 
 
-cor_spearman2 <- cor(df_bis$Score_BIPQ, df_bis$score_PHQ9, method = "spearman", use = "complete.obs")
+cor_spearman2 <- cor(dat_bis$Score_BIPQ, dat_bis$score_PHQ9, method = "spearman", use = "complete.obs")
 
 cor_spearman2
-cor.test(df_bis$Score_BIPQ, df_bis$score_PHQ9, method = "spearman")
+cor.test(dat_bis$Score_BIPQ, dat_bis$score_PHQ9, method = "spearman")
 
-cor_spearman3 <- cor(df_bis$Score_BIPQ, df_bis$score_GAD7, method = "spearman", use = "complete.obs")
+cor_spearman3 <- cor(dat_bis$Score_BIPQ, dat_bis$score_GAD7, method = "spearman", use = "complete.obs")
 
 cor_spearman3
-cor.test(df_bis$Score_BIPQ, df_bis$score_GAD7, method = "spearman")
+cor.test(dat_bis$Score_BIPQ, dat_bis$score_GAD7, method = "spearman")
 
 # 2- with latent model 
 
@@ -286,7 +666,7 @@ cor.test(df_bis$Score_BIPQ, df_bis$score_GAD7, method = "spearman")
 var_sss <- c("id_unik", "Score_autostigma", "stigma_auto_1",	"stigma_auto_2",	"stigma_auto_3",	"stigma_auto_4",	"stigma_auto_5",	"stigma_auto_6",	"stigma_auto_7", "stigma_auto_8", "stigma_auto_9",
              "Score_BIPQ", "stigma_percept_1", "stigma_percept_2", "stigma_percept_3", "stigma_percept_4","stigma_percept_5", "stigma_percept_6", "stigma_percept_7", "stigma_percept_8"
 )
-data_sss <-dff[, c(var_sss)]
+data_sss <-datf[, c(var_sss)]
 summary(data_sss)
 
 cfa_model_SSS <- '
@@ -377,7 +757,7 @@ var_phq <- c("id_unik", "score_PHQ9", "interet_plaisir",	"triste_deprime",	"somm
              
              "Score_BIPQ", "stigma_percept_1", "stigma_percept_2", "stigma_percept_3", "stigma_percept_4","stigma_percept_5", "stigma_percept_6", "stigma_percept_7", "stigma_percept_8"
 )
-data_phq <-dff[, c(var_phq)]
+data_phq <-datf[, c(var_phq)]
 summary(data_phq)
 
 
@@ -468,7 +848,7 @@ summary(fit_PHQ_Missing_1, fit.measures = TRUE, standardized = TRUE, rsquare = T
 var_gad <- c("id_unik", "score_GAD7", "nerveux",	"inquiet",	"inquiet_exces",	"difficult_detente",	"agitation",	"tendance_contrarie",	"sentiment_peur",
              "Score_BIPQ", "stigma_percept_1", "stigma_percept_2", "stigma_percept_3", "stigma_percept_4","stigma_percept_5", "stigma_percept_6", "stigma_percept_7", "stigma_percept_8"
 )
-data_gad<-dff[, c(var_gad)]
+data_gad<-datf[, c(var_gad)]
 summary(data_gad)
 
 cfa_model_GAD <- '
@@ -564,10 +944,10 @@ summary(fit_GAD_Missing_1, fit.measures = TRUE, standardized = TRUE, rsquare = T
 
 
 # Modèle A : WHODAS ~ PHQ9 + SSS + GAD
-modelA <- lm(Score_whodas ~ score_PHQ9 + Score_autostigma + score_GAD7, data = df_bis)
+modelA <- lm(Score_whodas ~ score_PHQ9 + Score_autostigma + score_GAD7, data = dat_bis)
 
 # Modèle B : WHODAS ~ PHQ9 + SSS + GAD + BIPQ
-modelB <- lm(Score_whodas ~ score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ, data = df_bis)
+modelB <- lm(Score_whodas ~ score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ, data = dat_bis)
 
 anova_result <- anova(modelA, modelB)
 anova_result
@@ -583,7 +963,7 @@ library(boot)
 
 
 ## Commonality analysis 
-df_clean <- df_bis[complete.cases(df_bis[, c("Score_whodas",
+dat_clean <- dat_bis[complete.cases(dat_bis[, c("Score_whodas",
                                              "score_PHQ9",
                                              "Score_autostigma",
                                              "score_GAD7",
@@ -591,9 +971,9 @@ df_clean <- df_bis[complete.cases(df_bis[, c("Score_whodas",
 # 1574 observations
 
 res_lm <- lm(Score_whodas ~ score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ,
-             data = df_clean)
+             data = dat_clean)
 res_dom <- calc.yhat(res_lm)
-boot.out = boot(data=df_clean, yhat::boot.yhat, 1000, 
+boot.out = boot(data=dat_clean, yhat::boot.yhat, 1000, 
                 lmOut=res_lm, regrout0=res_dom)
 boot_results = booteval.yhat(res_dom, boot.out,bty="perc",.95,3)
 
