@@ -4,10 +4,11 @@ author: "Miss Blandine, Prof Yannick, and the rest (the plebe people)"
 date: '2025-09-17'
 output:
   html_document:
-    toc: yes
-    toc_float: yes
+    toc: true
+    toc_float: true
+    encoding: UTF-8
   pdat_document:
-    toc: yes
+    toc: true
 ---
 
 
@@ -46,15 +47,11 @@ library(corrplot)
 library(ggplot2)
 ```
 
+
+
 ```{r, echo=FALSE, message=FALSE, results='hide', warning=FALSE}
 
-dat <- read.csv(
-  "C:/Users/bland/BIPQ_psychometric/Data_BIPQ.csv",
-  na.strings = "",
-  fileEncoding = "latin1",
-  stringsAsFactors = FALSE,
-  colClasses = "character"
-)
+dat <-read_excel("C:/Users/bland/BIPQ_psychometric/Data_BIPQ.Xlsx")
 
 num_vars <- c(
   "age", 
@@ -62,7 +59,14 @@ num_vars <- c(
   "stigma_percept_5","stigma_percept_6","stigma_percept_7","stigma_percept_8", "Score_lubben", "score_PHQ9", "DIAG_NOW_3_Age", "nb_maladies_psy", "nb_maladies_somatiques", "nb_PEC1", "nb_PEC2","Score_BIPQ", "Score_whodas", "score_GAD7", "Score_autostigma"
 )
 
-dat[num_vars] <- lapply(dat[num_vars], function(x) as.numeric(x))
+to_num <- function(x) {
+  x <- trimws(as.character(x))
+  x <- gsub(",", ".", x, fixed = TRUE)
+  suppressWarnings(as.numeric(x))
+}
+
+dat[num_vars] <- lapply(dat[num_vars], to_num)
+
 
 
 #### Data management express
@@ -103,12 +107,10 @@ data_efa <- dat[, c(items)]
 
 ```
 
-# S1. Sample description
-```{r,, echo=FALSE}
-# ici on fait une table 1 de l'échantillon
-# https://www.rdocumentation.org/packages/table1/versions/1.5.1
 
-caption  <- "Charactéristiques sociodémographiques"
+# S1. Sample description
+```{r table1_socio, results='asis', echo=FALSE}
+caption <- "Charactéristiques sociodémographiques"
 
 dat$Sexe<-factor(dat$Sexe) 
 dat$age_classe<-factor(dat$age_classe) 
@@ -124,14 +126,14 @@ label(dat$diplome_ini) <- "Niveau de diplôme"
 label(dat$DEM_3_Aide) <- "Statut d'aidant"
 label(dat$Score_lubben) <- "Score Lubben"
 
-# peux etre ici séparer par H/F pour + lisibilité ? 
-# pas la peine de tout factor() alors que tu l'as fait plus haut
-table1(~  + factor(age_classe) + age + factor(situation_emploi_ini) + factor(situation_financiere) + factor(diplome_ini)+ factor(DEM_3_Aide) + Score_lubben | Sexe, data=dat, caption=caption)
+# peux etre ici séparer par H/F pour + lisibilité ? On ne peut pas car on a pas assez d'hommes 
+table1(~  Sexe + age_classe + age + situation_emploi_ini + situation_financiere + diplome_ini+ DEM_3_Aide + Score_lubben , data=dat, caption=caption)
 
-                             
+```                             
 
 
-caption  <- "Charactéristiques cliniques"
+```{r table1_clinique, results='asis', echo=FALSE}
+caption <- "Charactéristiques cliniques"
 
 dat$score_PHQ9_f<-factor(dat$score_PHQ9_f) 
 dat$DIAG_7<-factor(dat$DIAG_7) 
@@ -166,7 +168,7 @@ label(dat$Score_whodas) <- "Score whodas"
 label(dat$score_GAD7) <- "Score GAD7"
 label(dat$Score_autostigma) <- "Score autostigma"
 
-# passer en EN + | Sexe aussi je pense
+# passer en EN + | Sexe aussi je pense -> sexe tjrs mm pb et en(j'ai déjà fais une table desc pour le papier je verrai à la fin si je prend le temps de le faire avec ça )
 table1(~ score_PHQ9_f + score_PHQ9 + DIAG_7 + DIAG_NOW_1 + DIAG_NOW_3 + DIAG_NOW_3_Age + diff_mois + DIAG_NOW_2 + nb_maladies_psy + nb_maladies_somatiques + nb_PEC1 + nb_PEC2 + DIAG_6 + PEC_PREV_10 + PEC_18 + PEC_12 + PEC_NOW_9 + Score_BIPQ + Score_whodas + score_GAD7 + Score_autostigma, data=dat, caption=caption)
 
 
@@ -194,6 +196,7 @@ ggplot(dat, aes(x = Score_BIPQ)) +
   ) +
   theme_minimal()
 ```
+
 
 ## PHQ-9
 ```{r, , echo=FALSE}
@@ -310,98 +313,66 @@ residuals_summary <- do.call(rbind, lapply(names(results_residuals), function(na
   )
 }))
 
-residuals_summary[, c("model", "W", "p_value")]
+dt<-residuals_summary[, c("model", "W", "p_value")]
+dt %>%
+  kbl() %>%
+  kable_styling()
 
 ```
 
-```{r, echo=FALSE}
-################ GAD7
-# Variables
-x <- dat$Score_BIPQ
-y <- dat$score_GAD7
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=7, fig.height=3.5}
+plot_resid <- function(yvar, label, xvar="Score_BIPQ", min_n=10) {
 
-# gestion valeurs manquantes
-ok <- is.finite(x) & is.finite(y)
-x <- x[ok]
-y <- y[ok]
+  if (!all(c(xvar, yvar) %in% names(dat))) {
+    cat(sprintf("\n%s : variable manquante\n", label))
+    return(invisible(NULL))
+  }
 
-# Modèle linéaire simple (pour obtenir les erreurs)
-fit <- lm(scale(y) ~ scale(x))
-res <- resid(fit)
+  x <- dat[[xvar]]
+  y <- dat[[yvar]]
 
-# Visualisation de la distribution des erreurs
-par(mfrow = c(1,2))
-hist(res, breaks = 20, main = "Histogram of residuals GAD7~BIPQ", xlab = "Residuals")
-qqnorm(res, main = "QQ-plot of residuals GAD7~BIPQ")
-qqline(res)
-par(mfrow = c(1,1))
+  ok <- is.finite(x) & is.finite(y)
+  n  <- sum(ok)
 
+  cat(sprintf("\n%s : n=%d\n", label, n))
 
+  if (n < min_n) {
+    cat(sprintf("%s : pas assez de données (min_n=%d)\n", label, min_n))
+    return(invisible(NULL))
+  }
 
-################ PHQ9
-# Variables
-x <- dat$Score_BIPQ
-y <- dat$score_PHQ9
+  x2 <- x[ok]; y2 <- y[ok]
 
-# gestion valeurs manquantes
-ok <- is.finite(x) & is.finite(y)
-x <- x[ok]
-y <- y[ok]
+  sx <- sd(x2, na.rm=TRUE)
+  sy <- sd(y2, na.rm=TRUE)
 
-# Modèle linéaire simple (pour obtenir les erreurs)
-fit <- lm(scale(y) ~ scale(x))
-res <- resid(fit)
+  cat(sprintf("%s : sd(x)=%.6f | sd(y)=%.6f\n", label, sx, sy))
 
-# Visualisation de la distribution des erreurs
-par(mfrow = c(1,2))
-hist(res, breaks = 20, main = "Histogram of residuals PHQ9~BIPQ", xlab = "Residuals")
-qqnorm(res, main = "QQ-plot of residuals PHQ9~BIPQ")
-qqline(res)
-par(mfrow = c(1,1))
+  if (!is.finite(sx) || !is.finite(sy) || sx == 0 || sy == 0) {
+    cat(sprintf("%s : impossible de fitter (variance nulle ou invalide) -> skip\n", label))
+    return(invisible(NULL))
+  }
 
-################ whodas
-# Variables
-x <- dat$Score_BIPQ
-y <- dat$Score_whodas
+  # Standardisation manuelle (au lieu de scale() dans lm)
+  zx <- (x2 - mean(x2)) / sx
+  zy <- (y2 - mean(y2)) / sy
 
-# gestion valeurs manquantes
-ok <- is.finite(x) & is.finite(y)
-x <- x[ok]
-y <- y[ok]
+  fit <- lm(zy ~ zx)
+  res <- resid(fit)
 
-# Modèle linéaire simple (pour obtenir les erreurs)
-fit <- lm(scale(y) ~ scale(x))
-res <- resid(fit)
+  oldpar <- par(no.readonly = TRUE)
+  on.exit(par(oldpar), add = TRUE)
+  par(mfrow = c(1,2))
+  hist(res, breaks = 20, main = paste0("Residuals ", label, " (n=", n, ")"), xlab = "Residuals")
+  qqnorm(res, main = paste0("QQ ", label))
+  qqline(res)
+}
 
-# Visualisation de la distribution des erreurs
-par(mfrow = c(1,2))
-hist(res, breaks = 20, main = "Histogram of residuals whodas~BIPQ", xlab = "Residuals")
-qqnorm(res, main = "QQ-plot of residuals whodas~BIPQ")
-qqline(res)
-par(mfrow = c(1,1))
+plot_resid("score_GAD7",       "GAD7 ~ BIPQ")
+plot_resid("score_PHQ9",       "PHQ9 ~ BIPQ")
+plot_resid("Score_whodas",     "WHODAS ~ BIPQ")
+plot_resid("Score_autostigma", "SSS ~ BIPQ")
 
-
-
-################ SSS
-# Variables
-x <- dat$Score_BIPQ
-y <- dat$Score_autostigma
-
-# gestion valeurs manquantes
-ok <- is.finite(x) & is.finite(y)
-x <- x[ok]
-y <- y[ok]
-
-# Modèle linéaire simple (pour obtenir les erreurs)
-fit <- lm(scale(y) ~ scale(x))
-res <- resid(fit)
-
-# Visualisation de la distribution des erreurs
-par(mfrow = c(1,2))
-hist(res, breaks = 20, main = "Histogram of residuals SSS~BIPQ", xlab = "Residuals")
-qqnorm(res, main = "QQ-plot of residuals SSS~BIPQ")
-qqline(res)
-par(mfrow = c(1,1))
 
 ```
 
@@ -409,41 +380,62 @@ par(mfrow = c(1,1))
 # S3. Internal consistency{.tabset}
 
 ## Distribution des items
-```{r, echo=FALSE }
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE }
+
 vars <- paste0("stigma_percept_", 1:8)
 
+d <- descr(
+  data_efa[vars],
+  stats = c("skewness", "kurtosis"),
+  transpose = TRUE
+)
+
+# Convertit l'objet summarytools en data.frame exploitable
+tab <- as.data.frame(d)
+
+# Les colonnes s'appellent généralement "Skewness" / "Kurtosis" (casse variable selon versions)
+
 skew_kurt_table <- data.frame(
-  skewness = sapply(vars, function(v) describe(data_efa[[v]])$skew),
-  kurtosis = sapply(vars, function(v) describe(data_efa[[v]])$kurtosis)
+  variable = rownames(tab),
+  skewness = as.numeric(tab[[grep("skew", names(tab), ignore.case = TRUE, value = TRUE)[1]]]),
+  kurtosis = as.numeric(tab[[grep("kurt", names(tab), ignore.case = TRUE, value = TRUE)[1]]]),
+  row.names = NULL
+)
+
+skew_kurt_table$skewness <- round(skew_kurt_table$skewness, 2)
+skew_kurt_table$kurtosis <- round(skew_kurt_table$kurtosis, 2)
+
+
+# -----------------------------
+# 2) Data-visualisation globale avec dfSummary (mini histogrammes + NA, etc.)
+# -----------------------------
+dfs <- dfSummary(
+  data_efa[vars],
+  style      = "grid",
+  graph.col  = TRUE,   # mini-graphiques dans la colonne Graph
+  valid.col  = TRUE,
+  na.col     = TRUE
 )
 
 
-for (v in vars) {
+# ou rendu console / HTML
+print(dfs, method = "render")
 
-  x <- data_efa[[v]]
-  x <- x[is.finite(x)]
 
-  sk <- describe(x)$skew
-  ku <- describe(x)$kurtosis
+# affichage skewness and kurtosis
+skew_kurt_table%>%
+  kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
 
-  par(mfrow = c(1, 2))
 
-  hist(
-    x,
-    breaks = 10,
-    main = paste(v, "\nSkew =", round(sk, 2), "| Kurt =", round(ku, 2)),
-    xlab = "Score",
-    col = "grey"
-  )
 
-  qqnorm(x, main = paste("QQ-plot", v))
-  qqline(x)
-
-  par(mfrow = c(1, 1))
-}
 
 
 ```
+
 
 ## ICC
 ```{r}
@@ -458,9 +450,12 @@ items <- data_efa[, c("stigma_percept_1",
 
 # Calculer la matrice de corrélation de Spearman
 iic <- cor(items, method = "spearman", use = "pairwise.complete.obs")
+round(iic, 2)  %>%
+  kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
 
-# Afficher la matrice
-print(round(iic, 2))
+
 
 # Heatmap simple
 corrplot(iic, method = "color", type = "upper",
@@ -471,31 +466,60 @@ corrplot(iic, method = "color", type = "upper",
 ```
 
 ## ITC
-#```{r}
-# Calculer Cronbach's alpha et les item-total correlations
-alpha_result <- alpha(items, check.keys = TRUE)
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+items <- data_efa[vars]
 
-# Afficher les résultats
-alpha_result
+# Cronbach alpha
+alpha_result <- psych::alpha(items, check.keys = FALSE)
 
-# Les corrected item-total correlations sont dans :
-alpha_result$item.stats$r.drop
+
+# Corrected item-total correlations (r.drop)
+r_drop <- alpha_result$item.stats$r.drop
+names(r_drop) <- colnames(items)
+r_drop
+
+alpha_table <- data.frame(
+  item = rownames(alpha_result$item.stats),
+  mean = alpha_result$item.stats$mean,
+  sd   = alpha_result$item.stats$sd,
+  r_drop = alpha_result$item.stats$r.drop,
+  alpha_if_deleted = alpha_result$alpha.drop$raw_alpha,
+  row.names = NULL
+)
+
+alpha_table%>%
+  kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
+
 ```
+Explications : alpha_result$total$raw_alpha : alpha global
+
+r.drop : corrélation item–total corrigée (souvent on aime voir > 0.30)
+
+alpha_if_deleted : si supprimer l’item augmente beaucoup alpha → item possiblement problématique
+
+Erreur affichée : Some items ( stigma_percept_4 stigma_percept_7 ) were negatively correlated with the first principal component and 
+probably should be reversed.  
+
+Mais dans mon fichier les items sont déjà renversé dans le sens voulu
 
 ## Cronbach 
 
-#```{r}
-# Alpha avec correction automatique des items inversés # revérifie l'item 4 et 7, mes items sont déjà tous renversés 
-alpha <- alpha(items, check.keys = TRUE)
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+items <- data_efa[vars]
 
-# Afficher les résultats complets
-alpha
+# Cronbach alpha
+alpha_result <- psych::alpha(items, check.keys = FALSE)
+
+# Valeur d'alpha
+alpha_result$total$raw_alpha
 
 ```
 
 ## Omega
 
-#```{r}
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
 # Omega total (unidimensionnel)
 omega_result <- omega(items, nfactors = 1, fm = "ml")  # fm = "ml" pour maximum likelihood
 
@@ -506,29 +530,48 @@ omega_result
 
 ## Floor ceiling
 
-#```{r}
-### floor et ceiling effect 
- #data visualisation du package summarytools avec datsummary est bien utile
-# Calculer floor et ceiling effect pour chaque item
-floor_ceiling <- sapply(items, function(x) {
-  floor_effect <- sum(x == min(x, na.rm = TRUE)) / length(na.omit(x)) * 100
-  ceiling_effect <- sum(x == max(x, na.rm = TRUE)) / length(na.omit(x)) * 100
+```{r}
+
+# items = data.frame d'items numériques
+floor_ceiling <- t(sapply(items, function(x) {
+  x <- x[is.finite(x)]
+  n <- length(x)
+  if (n == 0) return(c(Floor = NA_real_, Ceiling = NA_real_))
+
+  floor_effect   <- sum(x == min(x)) / n * 100
+  ceiling_effect <- sum(x == max(x)) / n * 100
+
   c(Floor = round(floor_effect, 1), Ceiling = round(ceiling_effect, 1))
-})
+}))
 
-# Afficher le tableau
-floor_ceiling <- t(floor_ceiling)
-floor_ceiling
+floor_ceiling <- as.data.frame(floor_ceiling)
+floor_ceiling$item <- rownames(floor_ceiling)
+rownames(floor_ceiling) <- NULL
 
-# Résumé complet et visuel de tous les items
-datSummary(items,
-          headings = FALSE,   # pour afficher moins de texte
-          graph.magnif = 0.8, # taille des graphiques
-          valid.col = FALSE,  # cacher colonne des valeurs valides
-          style = "grid")     # style visuel agréable
-# Ajouter floor/ceiling dans datSummary
-summary_items <- datSummary(items)
-print(summary_items, method = "render")  # pour affichage HTML dans RStudio <- merci !!!! il existe le package kableExtra qui est fait pour ça autrement
+
+
+stats <- data.frame(
+  item = names(items),
+  n    = sapply(items, function(x) sum(is.finite(x))),
+  min  = sapply(items, function(x) min(x, na.rm = TRUE)),
+  max  = sapply(items, function(x) max(x, na.rm = TRUE)),
+  mean = sapply(items, function(x) mean(x, na.rm = TRUE)),
+  sd   = sapply(items, function(x) sd(x, na.rm = TRUE))
+)
+
+report_tbl <- stats %>%
+  left_join(floor_ceiling, by = "item") %>%
+  mutate(
+    mean = round(mean, 2),
+    sd   = round(sd, 2)
+  )
+
+report_tbl %>%
+  kbl(caption = "Descriptifs + Floor/Ceiling effects par item") %>%
+  kable_styling(full_width = FALSE) %>%
+  column_spec(1, bold = TRUE)
+
+
 ```
 
 # S4. 
