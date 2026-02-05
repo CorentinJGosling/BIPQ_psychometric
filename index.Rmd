@@ -45,6 +45,10 @@ library(readxl)
 library(psych)
 library(corrplot)
 library(ggplot2)
+library(MASS)
+library(yhat)
+library(boot)
+library(lavaanPlot)
 ```
 
 
@@ -530,7 +534,7 @@ omega_result
 
 ## Floor ceiling
 
-```{r}
+```{r,echo=FALSE, message=FALSE,  warning=FALSE}
 
 # items = data.frame d'items numériques
 floor_ceiling <- t(sapply(items, function(x) {
@@ -574,19 +578,12 @@ report_tbl %>%
 
 ```
 
-# S4. 
+# S4. Structural validity{.tabset}
 
+## unidimensional CFA
 
-#```{r, eval=FALSE,include=FALSE}
-#######################################################################################
-#######################################################################################
-#################  Structural validity   ##############################################
-#######################################################################################
-#######################################################################################
+```{r}
 
-#####  CFA 
-
-### unidimensionnel
 
 cfa_model <- '
 Stigma =~ stigma_percept_1 + stigma_percept_2 + stigma_percept_3 + stigma_percept_4 +
@@ -595,11 +592,17 @@ Stigma =~ stigma_percept_1 + stigma_percept_2 + stigma_percept_3 + stigma_percep
 fit <- cfa(cfa_model, data = data_efa, estimator = "MLR") # MLR = robust to non-normality
 summary(fit, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
 
-fit_indices <- fitMeasures(fit, c("cfi", "tli", "rmsea", "srmr"))
+fitMeasures(fit, c("cfi", "tli", "rmsea", "srmr"))
 
 
-semPaths(fit, "std", whatLabels = "std", layout = "circle")
+```
 
+
+## CFA comparison
+
+Avec le professeur Morvan, nous avions déjà eu des pb pour faire 2 fateurs sur la BIPQ sur notre jeu de données. Ceà marchit uniquement lorsque nous fixions la covariance pour un item.
+
+```{r, warning=FALSE}
 
 ### model 1 
 
@@ -615,142 +618,47 @@ summary(fit_multi, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
 ### model 2 
 
 cfa_model_multi_2 <- '
-F1 =~ stigma_percept_1 + stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + stigma_percept_8
+F1 =~ stigma_percept_1 + stigma_percept_2 + stigma_percept_5 + stigma_percept_6 + stigma_percept_8
 F2 =~ stigma_percept_3 + stigma_percept_4 + stigma_percept_7
 '
 fit_multi_2 <- cfa(cfa_model_multi_2, data = data_efa, estimator = "MLR")
+
 summary(fit_multi_2, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
 
 
-#######################################################################################
-#######################################################################################
-#################  hypothesis testing    ##############################################
-#######################################################################################
-#######################################################################################
+```
 
-datf <- merge(dat, gad, by = "id_unik", all.x = TRUE)
+# S5. Hypothesis testing{.tabset} 
 
-dat_bis <- datf %>%
-  select(score_PHQ9, Score_autostigma, Score_BIPQ, Score_whodas, score_GAD7)
-summary(dat_bis)
+## Convergent validity
 
-# convergent validity 
-# 1- with simple correlation
-cor_spearman <- cor(dat_bis$Score_BIPQ, dat_bis$Score_autostigma, method = "spearman", use = "complete.obs")
+### Simple correlation
+```{r, warning=FALSE}
 
-cor_spearman
-cor.test(dat_bis$Score_BIPQ, dat_bis$Score_autostigma, method = "spearman")
-
+dat_bis <- dat %>%
+  dplyr::select(score_PHQ9, Score_autostigma, Score_BIPQ, Score_whodas, score_GAD7)
 
 cor_spearman2 <- cor(dat_bis$Score_BIPQ, dat_bis$score_PHQ9, method = "spearman", use = "complete.obs")
-
-cor_spearman2
 cor.test(dat_bis$Score_BIPQ, dat_bis$score_PHQ9, method = "spearman")
 
 cor_spearman3 <- cor(dat_bis$Score_BIPQ, dat_bis$score_GAD7, method = "spearman", use = "complete.obs")
 
-cor_spearman3
 cor.test(dat_bis$Score_BIPQ, dat_bis$score_GAD7, method = "spearman")
 
-# 2- with latent model 
 
-### model 1 
-var_sss <- c("id_unik", "Score_autostigma", "stigma_auto_1",	"stigma_auto_2",	"stigma_auto_3",	"stigma_auto_4",	"stigma_auto_5",	"stigma_auto_6",	"stigma_auto_7", "stigma_auto_8", "stigma_auto_9",
-             "Score_BIPQ", "stigma_percept_1", "stigma_percept_2", "stigma_percept_3", "stigma_percept_4","stigma_percept_5", "stigma_percept_6", "stigma_percept_7", "stigma_percept_8"
-)
-data_sss <-datf[, c(var_sss)]
-summary(data_sss)
+```
 
-cfa_model_SSS <- '
-BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + stigma_percept_7 + stigma_percept_2
-SSS =~ stigma_auto_1 + stigma_auto_2 + stigma_auto_3 + stigma_auto_4 + stigma_auto_5 + stigma_auto_6 + stigma_auto_7 + stigma_auto_8 + stigma_auto_9
-'
-fit_SSS <- cfa(cfa_model_SSS, data = data_sss, estimator = "MLR")
-summary(fit_SSS, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+### Latent model 
 
-fit_SSS_Missing <- cfa(
-  cfa_model_SSS,
-  data = data_sss,
-  estimator = "MLR",
-  missing = "fiml"
-)
-summary(fit_SSS_Missing, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
-
-# with free correlation
-
-cfa_SSS_corr_libre <- '
-BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + 
-        stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + 
-        stigma_percept_7 + stigma_percept_2
-
-SSS =~ stigma_auto_1 + stigma_auto_2 + stigma_auto_3 + stigma_auto_4 + stigma_auto_5 + stigma_auto_6 + stigma_auto_7 + stigma_auto_8 + stigma_auto_9
-
-# corrélation libre entre facteurs
-BIPQ ~~ SSS
-'
-
-fit_SSS_corr_libre <- cfa(
-  cfa_SSS_corr_libre,
-  data = data_sss,
-  estimator = "MLR",
-  missing = "fiml"  # essaye avec et sans cette ligne
-)
-
-summary(fit_SSS_corr_libre , fit.measures = TRUE, standardized = TRUE)
-
-
-# avec contrainte d'égalité à 0
-
-cfa_SSS_corr_0 <- '
-BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + 
-        stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + 
-        stigma_percept_7 + stigma_percept_2
-
-SSS =~ stigma_auto_1 + stigma_auto_2 + stigma_auto_3 + stigma_auto_4 + stigma_auto_5 + stigma_auto_6 + stigma_auto_7 + stigma_auto_8 + stigma_auto_9
-
-# corrélation contrainte à 0
-BIPQ ~~ 0*SSS
-'
-
-fit_SSS_corr_0 <- cfa(
-  cfa_SSS_corr_0,
-  data = data_sss,
-  estimator = "MLR",
-  missing = "fiml"  # essaye avec et sans cette ligne
-)
-
-summary(fit_SSS_corr_0, fit.measures = TRUE, standardized = TRUE)
-
-# Si le test est significatif :la contrainte (corrélation = 0) dégrade le modèle donc les facteurs sont significativement corrélés
-# lance une fois avec les deux cfa avec Missing et sans 
-
-lavTestLRT(fit_SSS_corr_libre, fit_SSS_corr_0)
-
-# maintenant model cfa 1 facteur
-
-cfa_model_SSS_1 <- '
-BIPQSSS =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + stigma_percept_7 + stigma_percept_2
- + stigma_auto_1 + stigma_auto_2 + stigma_auto_3 + stigma_auto_4 + stigma_auto_5 + stigma_auto_6 + stigma_auto_7 + stigma_auto_8 + stigma_auto_9
-'
-fit_SSS_1 <- cfa(cfa_model_SSS_1, data = data_sss, estimator = "MLR")
-summary(fit_SSS_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
-
-fit_SSS_Missing_1 <- cfa(
-  cfa_model_SSS_1,
-  data = data_sss,
-  estimator = "MLR",
-  missing = "fiml" 
-)
-summary(fit_SSS_Missing_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
-
-### model 2 
+#### BIPQ ~ PHQ9
+#### simple model (free correlation)
+```{r, warning=FALSE}
 
 var_phq <- c("id_unik", "score_PHQ9", "interet_plaisir",	"triste_deprime",	"sommeil",	"fatigue",	"appetit",	"opinion_soi",	"concentration",	"activite",	"consequence_pb",
              
              "Score_BIPQ", "stigma_percept_1", "stigma_percept_2", "stigma_percept_3", "stigma_percept_4","stigma_percept_5", "stigma_percept_6", "stigma_percept_7", "stigma_percept_8"
 )
-data_phq <-datf[, c(var_phq)]
-summary(data_phq)
+data_phq <-dat[, c(var_phq)]
 
 
 cfa_model_PHQ <- '
@@ -758,97 +666,71 @@ BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + stigma_percept_
 PHQ9 =~ interet_plaisir + triste_deprime + sommeil + fatigue + appetit + opinion_soi + concentration + activite + consequence_pb
 '
 fit_PHQ <- cfa(cfa_model_PHQ, data = data_phq, estimator = "MLR")
-summary(fit_PHQ, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+#summary(fit_PHQ, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+fitMeasures(fit_PHQ, c("cfi", "tli", "rmsea", "srmr"))
 
-fit_PHQ_Missing <- cfa(
-  cfa_model_PHQ,
-  data = data_phq,
-  estimator = "MLR",
-  missing = "fiml"
-)
-summary(fit_PHQ_Missing, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+```
 
-# with free correlation
+#### with correlation ==1
 
-cfa_PHQ_corr_libre <- '
+```{r, warning=FALSE}
+cfa_PHQ_corr <- '
 BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + 
         stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + 
         stigma_percept_7 + stigma_percept_2
 
 PHQ9 =~ interet_plaisir + triste_deprime + sommeil + fatigue + appetit + opinion_soi + concentration + activite + consequence_pb
 
-# corrélation libre entre facteurs
-BIPQ ~~ PHQ9
+# corrélation contrainte à 1
+BIPQ ~~ 1*PHQ9
 '
 
-fit_PHQ_corr_libre <- cfa(
-  cfa_PHQ_corr_libre,
+fit_PHQ_corr <- cfa(
+  cfa_PHQ_corr,
   data = data_phq,
-  estimator = "MLR",
-  missing = "fiml"  # essaye avec et sans cette ligne
+  estimator = "MLR"
 )
 
-summary(fit_PHQ_corr_libre , fit.measures = TRUE, standardized = TRUE)
+#summary(fit_PHQ_corr, fit.measures = TRUE, standardized = TRUE)
+fitMeasures(fit_PHQ_corr, c("cfi", "tli", "rmsea", "srmr"))
+
+# test
+
+lavTestLRT(fit_PHQ, fit_PHQ_corr)
+
+```
+Si le test est significatif :la contrainte (corrélation = 1) dégrade le modèle donc les facteurs ne sont pas équivalents 
 
 
-# avec contrainte d'égalité à 0
-
-cfa_PHQ_corr_0 <- '
-BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + 
-        stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + 
-        stigma_percept_7 + stigma_percept_2
-
-PHQ9 =~ interet_plaisir + triste_deprime + sommeil + fatigue + appetit + opinion_soi + concentration + activite + consequence_pb
-
-# corrélation contrainte à 0
-BIPQ ~~ 0*PHQ9
-'
-
-fit_PHQ_corr_0 <- cfa(
-  cfa_PHQ_corr_0,
-  data = data_phq,
-  estimator = "MLR",
-  missing = "fiml"  # essaye avec et sans cette ligne
-)
-
-summary(fit_PHQ_corr_0, fit.measures = TRUE, standardized = TRUE)
-
-# Si le test est significatif :la contrainte (corrélation = 0) dégrade le modèle donc les facteurs sont significativement corrélés
-# lance une fois avec les deux cfa avec Missing et sans 
-
-lavTestLRT(fit_PHQ_corr_libre, fit_PHQ_corr_0)
-
-# maintenant model cfa 1 facteur
-
+#### 1 factor model 
+```{r}
 cfa_model_PHQ_1 <- '
 BIPQPHQ9 =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + stigma_percept_7 + stigma_percept_2
  + interet_plaisir + triste_deprime + sommeil + fatigue + appetit + opinion_soi + concentration + activite + consequence_pb
 '
 fit_PHQ_1 <- cfa(cfa_model_PHQ_1, data = data_phq, estimator = "MLR")
-summary(fit_PHQ_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+#summary(fit_PHQ_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
 
-fit_PHQ_Missing_1 <- cfa(
-  cfa_model_PHQ_1,
-  data = data_phq,
-  estimator = "MLR",
-  missing = "fiml" 
-)
-summary(fit_PHQ_Missing_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+fitMeasures(fit_PHQ_1, c("cfi", "tli", "rmsea", "srmr"))
 
-### model 3 
+```
 
+#### BIPQ~GAD7
+#### Simple model (free correlation)
+
+```{r}
 var_gad <- c("id_unik", "score_GAD7", "nerveux",	"inquiet",	"inquiet_exces",	"difficult_detente",	"agitation",	"tendance_contrarie",	"sentiment_peur",
              "Score_BIPQ", "stigma_percept_1", "stigma_percept_2", "stigma_percept_3", "stigma_percept_4","stigma_percept_5", "stigma_percept_6", "stigma_percept_7", "stigma_percept_8"
 )
-data_gad<-datf[, c(var_gad)]
-summary(data_gad)
+data_gad<-dat[, c(var_gad)]
 
 cfa_model_GAD <- '
 BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + stigma_percept_7 + stigma_percept_2
 GAD =~ nerveux + inquiet + inquiet_exces + difficult_detente + agitation + tendance_contrarie + sentiment_peur
 '
 fit_GAD <- cfa(cfa_model_GAD, data = data_gad, estimator = "MLR")
-summary(fit_GAD, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+#summary(fit_GAD, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+fitMeasures(fit_GAD, c("cfi", "tli", "rmsea", "srmr"))
 
 fit_GAD_Missing <- cfa(
   cfa_model_GAD,
@@ -856,11 +738,17 @@ fit_GAD_Missing <- cfa(
   estimator = "MLR",
   missing = "fiml"
 )
-summary(fit_GAD_Missing, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+#summary(fit_GAD_Missing, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+fitMeasures(fit_GAD_Missing, c("cfi", "tli", "rmsea", "srmr"))
 
-# with free correlation
+```
+Est ce mieux d'utiliser le modèle avec ou sans la gestion des NAs
 
-cfa_GAD_corr_libre <- '
+#### with correlation = 1
+
+est ce qu'on garde missing = "fiml" pour la GAD car elle a bcp de valeurs manquante
+```{r}
+cfa_GAD_corr <- '
 BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + 
         stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + 
         stigma_percept_7 + stigma_percept_2
@@ -868,50 +756,28 @@ BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 +
 GAD =~ nerveux + inquiet + inquiet_exces + difficult_detente + 
        agitation + tendance_contrarie + sentiment_peur
 
-# corrélation libre entre facteurs
-BIPQ ~~ GAD
+# corrélation contrainte à 1
+BIPQ ~~ 1*GAD
 '
 
-fit_GAD_corr_libre <- cfa(
-  cfa_GAD_corr_libre,
+fit_GAD_corr <- cfa(
+  cfa_GAD_corr,
   data = data_gad,
   estimator = "MLR",
   missing = "fiml"  # essaye avec et sans cette ligne
 )
 
-summary(fit_GAD_corr_libre , fit.measures = TRUE, standardized = TRUE)
+#summary(fit_GAD_corr, fit.measures = TRUE, standardized = TRUE)
+fitMeasures(fit_GAD_corr, c("cfi", "tli", "rmsea", "srmr"))
 
+# test
 
-# avec contrainte d'égalité à 0
+lavTestLRT(fit_GAD_Missing, fit_GAD_corr)
 
-cfa_GAD_corr_0 <- '
-BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + 
-        stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + 
-        stigma_percept_7 + stigma_percept_2
+```
 
-GAD =~ nerveux + inquiet + inquiet_exces + difficult_detente + 
-       agitation + tendance_contrarie + sentiment_peur
-
-# corrélation contrainte à 0
-BIPQ ~~ 0*GAD
-'
-
-fit_GAD_corr_0 <- cfa(
-  cfa_GAD_corr_0,
-  data = data_gad,
-  estimator = "MLR",
-  missing = "fiml"  # essaye avec et sans cette ligne
-)
-
-summary(fit_GAD_corr_0, fit.measures = TRUE, standardized = TRUE)
-
-# Si le test est significatif :la contrainte (corrélation = 0) dégrade le modèle donc les facteurs sont significativement corrélés
-# lance une fois avec les deux cfa avec Missing et sans 
-
-lavTestLRT(fit_GAD_corr_libre, fit_GAD_corr_0)
-
-# maintenant model cfa 1 facteur
-
+#### 1 factor model 
+```{r}
 cfa_model_GAD_1 <- '
 BIPQGAD =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + stigma_percept_7 + stigma_percept_2
  + nerveux + inquiet + inquiet_exces + difficult_detente + agitation + tendance_contrarie + sentiment_peur
@@ -925,15 +791,93 @@ fit_GAD_Missing_1 <- cfa(
   estimator = "MLR",
   missing = "fiml"
 )
-summary(fit_GAD_Missing_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+#summary(fit_GAD_Missing_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+
+fitMeasures(fit_GAD_1, c("cfi", "tli", "rmsea", "srmr"))
+fitMeasures(fit_GAD_Missing_1, c("cfi", "tli", "rmsea", "srmr"))
+```
 
 
-#######################################################################################
-#######################################################################################
-#################  incremental validity    ############################################
-#######################################################################################
-#######################################################################################
+## Discriminant validity 
 
+### Simple correlations 
+```{r}
+cor_spearman <- cor(dat_bis$Score_BIPQ, dat_bis$Score_autostigma, method = "spearman", use = "complete.obs")
+cor.test(dat_bis$Score_BIPQ, dat_bis$Score_autostigma, method = "spearman")
+
+
+```
+
+### Latent model 
+
+#### Simple model (free correlation)
+```{r}
+var_sss <- c("id_unik", "Score_autostigma", "stigma_auto_1",	"stigma_auto_2",	"stigma_auto_3",	"stigma_auto_4",	"stigma_auto_5",	"stigma_auto_6",	"stigma_auto_7", "stigma_auto_8", "stigma_auto_9",
+             "Score_BIPQ", "stigma_percept_1", "stigma_percept_2", "stigma_percept_3", "stigma_percept_4","stigma_percept_5", "stigma_percept_6", "stigma_percept_7", "stigma_percept_8"
+)
+data_sss <-dat[, c(var_sss)]
+
+cfa_model_SSS <- '
+BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + stigma_percept_7 + stigma_percept_2
+SSS =~ stigma_auto_1 + stigma_auto_2 + stigma_auto_3 + stigma_auto_4 + stigma_auto_5 + stigma_auto_6 + stigma_auto_7 + stigma_auto_8 + stigma_auto_9
+'
+fit_SSS <- cfa(cfa_model_SSS, data = data_sss, estimator = "MLR")
+#summary(fit_SSS, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+fitMeasures(fit_SSS, c("cfi", "tli", "rmsea", "srmr"))
+
+```
+
+
+#### with correlation = 1
+```{r}
+
+cfa_SSS_corr <- '
+BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + 
+        stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + 
+        stigma_percept_7 + stigma_percept_2
+
+SSS =~ stigma_auto_1 + stigma_auto_2 + stigma_auto_3 + stigma_auto_4 + stigma_auto_5 + stigma_auto_6 + stigma_auto_7 + stigma_auto_8 + stigma_auto_9
+
+# corrélation contrainte à 1
+BIPQ ~~ 1*SSS
+'
+
+fit_SSS_corr <- cfa(
+  cfa_SSS_corr,
+  data = data_sss,
+  estimator = "MLR"
+)
+
+#summary(fit_SSS_corr, fit.measures = TRUE, standardized = TRUE)
+fitMeasures(fit_SSS_corr, c("cfi", "tli", "rmsea", "srmr"))
+
+# test 
+
+lavTestLRT(fit_SSS, fit_SSS_corr)
+
+
+```
+
+
+#### 1 factor model
+
+```{r}
+
+cfa_model_SSS_1 <- '
+BIPQSSS =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + stigma_percept_7 + stigma_percept_2
+ + stigma_auto_1 + stigma_auto_2 + stigma_auto_3 + stigma_auto_4 + stigma_auto_5 + stigma_auto_6 + stigma_auto_7 + stigma_auto_8 + stigma_auto_9
+'
+fit_SSS_1 <- cfa(cfa_model_SSS_1, data = data_sss, estimator = "MLR")
+#summary(fit_SSS_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+
+fitMeasures(fit_SSS_1, c("cfi", "tli", "rmsea", "srmr"))
+```
+
+
+# S6. Incremental validity{.tabset} 
+
+## With anova 
+```{r}
 
 # Modèle A : WHODAS ~ PHQ9 + SSS + GAD
 modelA <- lm(Score_whodas ~ score_PHQ9 + Score_autostigma + score_GAD7, data = dat_bis)
@@ -945,15 +889,11 @@ anova_result <- anova(modelA, modelB)
 anova_result
 
 
-############ code corentin
-
-library(psych)
-library(MASS)
-install.packages('yhat')
-library(yhat)
-library(boot)
+```
 
 
+## with yhat
+```{r}
 ## Commonality analysis 
 dat_clean <- dat_bis[complete.cases(dat_bis[, c("Score_whodas",
                                              "score_PHQ9",
@@ -972,7 +912,6 @@ boot_results = booteval.yhat(res_dom, boot.out,bty="perc",.95,3)
 results_filtered <- boot_results$combCIaps["score_PHQ9,Score_autostigma,score_GAD7", "Score_BIPQ.Inc"] # d'abord la part de variance du whodas expliquée par les 3 qst, puis la validité incrémentale de la BIPQ
 
 print(results_filtered)
-
 
 
 
