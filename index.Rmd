@@ -101,6 +101,13 @@ dat <- dat %>%
     TRUE ~ NA_character_
   ))
 
+dat <- dat %>%
+  mutate(PEC_12 = case_when(
+    PEC_12 == 5 ~ "Je ne préfère pas répondre à cette question",
+    TRUE ~ PEC_12
+  ))
+
+
 
 # Garder uniquement les variables d’intérêt + poids pour l'EFA
 items <- c("stigma_percept_1", "stigma_percept_2", "stigma_percept_3", "stigma_percept_4",
@@ -180,7 +187,6 @@ table1(~ score_PHQ9_f + score_PHQ9 + DIAG_7 + DIAG_NOW_1 + DIAG_NOW_3 + DIAG_NOW
 
 # S2. Variable description{.tabste}
 
-Description de la distribution des scores utilisés
 
 ## BIPQ
 ```{r, , echo=FALSE}
@@ -234,7 +240,7 @@ ggplot(dat, aes(x = score_GAD7)) +
   theme_minimal()
 ```
 
-## SSS
+## SSS-S
 ```{r, , echo=FALSE}
 # SSS
 ggplot(dat, aes(x = Score_autostigma)) +
@@ -243,8 +249,27 @@ ggplot(dat, aes(x = Score_autostigma)) +
                  na.rm = TRUE) +
   geom_density(na.rm = TRUE) +
   labs(
-    title = "Self stigma score distribution",
-    x = "Self stigma score",
+    title = "SSS-S score distribution",
+    x = "SSS-S score",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+
+
+```
+
+## WHODAS-12
+```{r, , echo=FALSE}
+# SSS
+ggplot(dat, aes(x = Score_whodas)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 10, fill = "grey80", color = "black",
+                 na.rm = TRUE) +
+  geom_density(na.rm = TRUE) +
+  labs(
+    title = "WHODAS-12 score distribution",
+    x = "WHODAS-12 score",
     y = "Density"
   ) +
   theme_minimal()
@@ -254,12 +279,9 @@ ggplot(dat, aes(x = Score_autostigma)) +
 ```
 
 
-Je teste la normalité de la distribution des erreurs des items de la BIPQ. Si W > 0.98, la distribution est proche d'une loi normale. 
--> est ce que c'est nécessaire de toutes les tester et surtout est ce que c'est la bonne manière de regarder la distribution des erreurs ?
-=> non on pourrait regarder la distribution des résidus des associations mais ça me semble OK de pas être plus royaliste que le roi (ok je viens de voir que c'est en dessosu, aprfait!)
+## Normality of the distribution of errors in the BIPQ items
 
-
-```{r}
+```{r,echo=FALSE}
 ## ici, regarde le package kableExtra pour faire des tables + jolies
 ## https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html
 # tous mes items ont été remis dans le bon sens préalablement
@@ -324,7 +346,10 @@ dt %>%
 
 ```
 
-```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=7, fig.height=3.5}
+
+## Distribution of association residues
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE, fig.width=8.5, fig.height=4}
 plot_resid <- function(yvar, label, xvar="Score_BIPQ", min_n=10) {
 
   if (!all(c(xvar, yvar) %in% names(dat))) {
@@ -368,14 +393,14 @@ plot_resid <- function(yvar, label, xvar="Score_BIPQ", min_n=10) {
   on.exit(par(oldpar), add = TRUE)
   par(mfrow = c(1,2))
   hist(res, breaks = 20, main = paste0("Residuals ", label, " (n=", n, ")"), xlab = "Residuals")
-  qqnorm(res, main = paste0("QQ ", label))
+  qqnorm(res, main = paste0("QQ-plot ", label))
   qqline(res)
 }
 
-plot_resid("score_GAD7",       "GAD7 ~ BIPQ")
-plot_resid("score_PHQ9",       "PHQ9 ~ BIPQ")
-plot_resid("Score_whodas",     "WHODAS ~ BIPQ")
-plot_resid("Score_autostigma", "SSS ~ BIPQ")
+plot_resid("score_GAD7",       "GAD-7 ~ BIPQ")
+plot_resid("score_PHQ9",       "PHQ-9 ~ BIPQ")
+plot_resid("Score_whodas",     "WHODAS-12 ~ BIPQ")
+plot_resid("Score_autostigma", "SSS-S ~ BIPQ")
 
 
 ```
@@ -385,8 +410,7 @@ plot_resid("Score_autostigma", "SSS ~ BIPQ")
 
 ## Distribution des items
 
-
-```{r, echo=FALSE, message=FALSE, warning=FALSE }
+```{r,message=FALSE, warning=FALSE }
 
 vars <- paste0("stigma_percept_", 1:8)
 
@@ -396,10 +420,10 @@ d <- descr(
   transpose = TRUE
 )
 
-# Convertit l'objet summarytools en data.frame exploitable
+# Converts the summarytools object into a usable data.frame
 tab <- as.data.frame(d)
 
-# Les colonnes s'appellent généralement "Skewness" / "Kurtosis" (casse variable selon versions)
+# The columns are generally called “Skewness” / “Kurtosis” (spelling varies depending on version).
 
 skew_kurt_table <- data.frame(
   variable = rownames(tab),
@@ -413,22 +437,22 @@ skew_kurt_table$kurtosis <- round(skew_kurt_table$kurtosis, 2)
 
 
 # -----------------------------
-# 2) Data-visualisation globale avec dfSummary (mini histogrammes + NA, etc.)
+# 2)  Global data visualization with dfSummary (mini histograms + NA, etc.)
 # -----------------------------
 dfs <- dfSummary(
   data_efa[vars],
   style      = "grid",
-  graph.col  = TRUE,   # mini-graphiques dans la colonne Graph
+  graph.col  = TRUE,   # mini-charts in the Graph column
   valid.col  = TRUE,
   na.col     = TRUE
 )
 
 
-# ou rendu console / HTML
+# or console/HTML rendering
 print(dfs, method = "render")
 
 
-# affichage skewness and kurtosis
+# display skewness and kurtosis
 skew_kurt_table%>%
   kbl() %>%
   kable_styling()%>%
@@ -443,16 +467,26 @@ skew_kurt_table%>%
 
 ## ICC
 ```{r}
-items <- data_efa[, c("stigma_percept_1",
-                      "stigma_percept_2",
-                      "stigma_percept_3",
-                      "stigma_percept_4",
-                      "stigma_percept_5",
-                      "stigma_percept_6",
-                      "stigma_percept_7",
-                      "stigma_percept_8")]
 
-# Calculer la matrice de corrélation de Spearman
+data_efa$'item 1'<- data_efa$stigma_percept_1
+data_efa$'item 2'<- data_efa$stigma_percept_2
+data_efa$'item 3'<- data_efa$stigma_percept_3
+data_efa$'item 4'<- data_efa$stigma_percept_4
+data_efa$'item 5'<- data_efa$stigma_percept_5
+data_efa$'item 6'<- data_efa$stigma_percept_6
+data_efa$'item 7'<- data_efa$stigma_percept_7
+data_efa$'item 8'<- data_efa$stigma_percept_8
+
+items <- data_efa[, c('item 1',
+                      'item 2',
+                      'item 3',
+                      'item 4',
+                      'item 5',
+                      'item 6',
+                      'item 7',
+                      'item 8')]
+
+# Calculate Spearman's correlation matrix
 iic <- cor(items, method = "spearman", use = "pairwise.complete.obs")
 round(iic, 2)  %>%
   kbl() %>%
@@ -461,7 +495,7 @@ round(iic, 2)  %>%
 
 
 
-# Heatmap simple
+# simple Heatmap 
 corrplot(iic, method = "color", type = "upper",
          addCoef.col = "black", # ajoute les valeurs
          tl.col = "black", tl.srt = 45,
@@ -470,7 +504,7 @@ corrplot(iic, method = "color", type = "upper",
 ```
 
 ## ITC
-```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+```{r, message=FALSE,  warning=FALSE}
 items <- data_efa[vars]
 
 # Cronbach alpha
@@ -497,46 +531,42 @@ alpha_table%>%
   column_spec(1, bold = TRUE)
 
 ```
-Explications : alpha_result$total$raw_alpha : alpha global
 
-r.drop : corrélation item–total corrigée (souvent on aime voir > 0.30)
+Explanations: alpha_result$total$raw_alpha: overall alpha
 
-alpha_if_deleted : si supprimer l’item augmente beaucoup alpha → item possiblement problématique
+r.drop: corrected item–total correlation (often we like to see > 0.30)
 
-Erreur affichée : Some items ( stigma_percept_4 stigma_percept_7 ) were negatively correlated with the first principal component and 
-probably should be reversed.  
-
-Mais dans mon fichier les items sont déjà renversé dans le sens voulu
+alpha_if_deleted: if deleting the item significantly increases alpha → item possibly problematic
 
 ## Cronbach 
 
-```{r, echo=FALSE, message=FALSE, warning=FALSE}
+```{r, message=FALSE, warning=FALSE}
 items <- data_efa[vars]
 
 # Cronbach alpha
 alpha_result <- psych::alpha(items, check.keys = FALSE)
 
-# Valeur d'alpha
+# Alpha values
 alpha_result$total$raw_alpha
 
 ```
 
 ## Omega
 
-```{r, echo=FALSE, message=FALSE,  warning=FALSE}
-# Omega total (unidimensionnel)
-omega_result <- omega(items, nfactors = 1, fm = "ml")  # fm = "ml" pour maximum likelihood
+```{r, message=FALSE,  warning=FALSE}
+# total Omega  (unidimensional)
+omega_result <- omega(items, nfactors = 1, fm = "ml")  # fm = "ml"  maximum likelihood
 
-# Afficher les résultats
+# print results
 omega_result
 
 ```
 
 ## Floor ceiling
 
-```{r,echo=FALSE, message=FALSE,  warning=FALSE}
+```{r, message=FALSE,  warning=FALSE}
 
-# items = data.frame d'items numériques
+# items = data.frame of numeric items
 floor_ceiling <- t(sapply(items, function(x) {
   x <- x[is.finite(x)]
   n <- length(x)
@@ -571,7 +601,7 @@ report_tbl <- stats %>%
   )
 
 report_tbl %>%
-  kbl(caption = "Descriptifs + Floor/Ceiling effects par item") %>%
+  kbl(caption = "Descriptifs + Floor/Ceiling effects by item") %>%
   kable_styling(full_width = FALSE) %>%
   column_spec(1, bold = TRUE)
 
@@ -583,7 +613,6 @@ report_tbl %>%
 ## unidimensional CFA
 
 ```{r}
-
 
 cfa_model <- '
 Stigma =~ stigma_percept_1 + stigma_percept_2 + stigma_percept_3 + stigma_percept_4 +
@@ -600,7 +629,7 @@ fitMeasures(fit, c("cfi", "tli", "rmsea", "srmr"))
 
 ## CFA comparison
 
-Avec le professeur Morvan, nous avions déjà eu des pb pour faire 2 fateurs sur la BIPQ sur notre jeu de données. Ceà marchit uniquement lorsque nous fixions la covariance pour un item.
+For model comparison, CFA does not work, probably due to a problem related to covariance.
 
 ```{r, warning=FALSE}
 
@@ -681,7 +710,7 @@ BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 +
 
 PHQ9 =~ interet_plaisir + triste_deprime + sommeil + fatigue + appetit + opinion_soi + concentration + activite + consequence_pb
 
-# corrélation contrainte à 1
+# correlation constrained to 1
 BIPQ ~~ 1*PHQ9
 '
 
@@ -699,7 +728,8 @@ fitMeasures(fit_PHQ_corr, c("cfi", "tli", "rmsea", "srmr"))
 lavTestLRT(fit_PHQ, fit_PHQ_corr)
 
 ```
-Si le test est significatif :la contrainte (corrélation = 1) dégrade le modèle donc les facteurs ne sont pas équivalents 
+
+Explanations: If the test is significant: the constraint (correlation = 1) degrades the model, so the factors are not equivalent. 
 
 
 #### 1 factor model 
@@ -728,25 +758,23 @@ cfa_model_GAD <- '
 BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + stigma_percept_7 + stigma_percept_2
 GAD =~ nerveux + inquiet + inquiet_exces + difficult_detente + agitation + tendance_contrarie + sentiment_peur
 '
-fit_GAD <- cfa(cfa_model_GAD, data = data_gad, estimator = "MLR")
-#summary(fit_GAD, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
-fitMeasures(fit_GAD, c("cfi", "tli", "rmsea", "srmr"))
 
 fit_GAD_Missing <- cfa(
   cfa_model_GAD,
   data = data_gad,
   estimator = "MLR",
-  missing = "fiml"
+  missing = "fiml"  #management of missing values, as there are many for the GAD-7
 )
+
 #summary(fit_GAD_Missing, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+
 fitMeasures(fit_GAD_Missing, c("cfi", "tli", "rmsea", "srmr"))
 
 ```
-Est ce mieux d'utiliser le modèle avec ou sans la gestion des NAs
+
 
 #### with correlation = 1
 
-est ce qu'on garde missing = "fiml" pour la GAD car elle a bcp de valeurs manquante
 ```{r}
 cfa_GAD_corr <- '
 BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + 
@@ -756,7 +784,7 @@ BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 +
 GAD =~ nerveux + inquiet + inquiet_exces + difficult_detente + 
        agitation + tendance_contrarie + sentiment_peur
 
-# corrélation contrainte à 1
+# correlation constrained to 1
 BIPQ ~~ 1*GAD
 '
 
@@ -764,7 +792,7 @@ fit_GAD_corr <- cfa(
   cfa_GAD_corr,
   data = data_gad,
   estimator = "MLR",
-  missing = "fiml"  # essaye avec et sans cette ligne
+  missing = "fiml" 
 )
 
 #summary(fit_GAD_corr, fit.measures = TRUE, standardized = TRUE)
@@ -782,8 +810,7 @@ cfa_model_GAD_1 <- '
 BIPQGAD =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + stigma_percept_7 + stigma_percept_2
  + nerveux + inquiet + inquiet_exces + difficult_detente + agitation + tendance_contrarie + sentiment_peur
 '
-fit_GAD_1 <- cfa(cfa_model_GAD_1, data = data_gad, estimator = "MLR")
-summary(fit_GAD_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+
 
 fit_GAD_Missing_1 <- cfa(
   cfa_model_GAD_1,
@@ -793,7 +820,7 @@ fit_GAD_Missing_1 <- cfa(
 )
 #summary(fit_GAD_Missing_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
 
-fitMeasures(fit_GAD_1, c("cfi", "tli", "rmsea", "srmr"))
+
 fitMeasures(fit_GAD_Missing_1, c("cfi", "tli", "rmsea", "srmr"))
 ```
 
@@ -838,7 +865,7 @@ BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 +
 
 SSS =~ stigma_auto_1 + stigma_auto_2 + stigma_auto_3 + stigma_auto_4 + stigma_auto_5 + stigma_auto_6 + stigma_auto_7 + stigma_auto_8 + stigma_auto_9
 
-# corrélation contrainte à 1
+# correlation constrained to 1
 BIPQ ~~ 1*SSS
 '
 
@@ -879,10 +906,10 @@ fitMeasures(fit_SSS_1, c("cfi", "tli", "rmsea", "srmr"))
 ## With anova 
 ```{r}
 
-# Modèle A : WHODAS ~ PHQ9 + SSS + GAD
+# Model A : WHODAS ~ PHQ9 + SSS + GAD
 modelA <- lm(Score_whodas ~ score_PHQ9 + Score_autostigma + score_GAD7, data = dat_bis)
 
-# Modèle B : WHODAS ~ PHQ9 + SSS + GAD + BIPQ
+# Model B : WHODAS ~ PHQ9 + SSS + GAD + BIPQ
 modelB <- lm(Score_whodas ~ score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ, data = dat_bis)
 
 anova_result <- anova(modelA, modelB)
@@ -909,7 +936,7 @@ boot.out = boot(data=dat_clean, yhat::boot.yhat, 1000,
                 lmOut=res_lm, regrout0=res_dom)
 boot_results = booteval.yhat(res_dom, boot.out,bty="perc",.95,3)
 
-results_filtered <- boot_results$combCIaps["score_PHQ9,Score_autostigma,score_GAD7", "Score_BIPQ.Inc"] # d'abord la part de variance du whodas expliquée par les 3 qst, puis la validité incrémentale de la BIPQ
+results_filtered <- boot_results$combCIaps["score_PHQ9,Score_autostigma,score_GAD7", "Score_BIPQ.Inc"] # First, the proportion of Whodas variance explained by the three questions, then the incremental validity of the BIPQ.
 
 print(results_filtered)
 
