@@ -49,13 +49,15 @@ library(MASS)
 library(yhat)
 library(boot)
 library(lavaanPlot)
+
+library(semPlot)
 ```
 
 
 
 ```{r, echo=FALSE, message=FALSE, results='hide', warning=FALSE}
 
-dat <-read_excel("C:/Users/bland/BIPQ_psychometric/Data_BIPQ.Xlsx")
+dat <-read_excel("C:/Users/Stagiaire_CER2025/Recherche/CompareDep/BIPQ/Mai2026/Data_BIPQ.Xlsx")
 
 num_vars <- c(
   "age", 
@@ -614,16 +616,32 @@ report_tbl %>%
 
 ```{r}
 
+data_efa <- data_efa %>%
+  rename(
+    item1 = `item 1`,
+    item2 = `item 2`,
+    item3 = `item 3`,
+    item4 = `item 4`,
+    item5 = `item 5`,
+    item6 = `item 6`,
+    item7 = `item 7`,
+    item8 = `item 8`
+  )
+
 cfa_model <- '
-Stigma =~ stigma_percept_1 + stigma_percept_2 + stigma_percept_3 + stigma_percept_4 +
-          stigma_percept_5 + stigma_percept_6 + stigma_percept_7 + stigma_percept_8
+BIPQ =~ item1 + item2 + item3 + item4 +
+        item5 + item6 + item7 + item8
 '
+
 fit <- cfa(cfa_model, data = data_efa, estimator = "MLR") # MLR = robust to non-normality
 summary(fit, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
 
 fitMeasures(fit, c("cfi", "tli", "rmsea", "srmr"))
 
-
+semPaths(fit, what = "path", whatLabels = "std", layout = "tree",
+         color = "white", edge.color = "black", fade = FALSE,
+         nCharNodes = 0, edge.label.cex = 0.9,
+         sizeMan = 8, sizeLat = 10, mar = c(5, 5, 5, 5))
 ```
 
 
@@ -906,41 +924,401 @@ fitMeasures(fit_SSS_1, c("cfi", "tli", "rmsea", "srmr"))
 ## With anova 
 ```{r}
 
-# Model A : WHODAS ~ PHQ9 + SSS + GAD
-modelA <- lm(Score_whodas ~ score_PHQ9 + Score_autostigma + score_GAD7, data = dat_bis)
+dat_bis <- dat %>%
+  dplyr::select(score_PHQ9, Score_autostigma, Score_BIPQ, Score_whodas, score_GAD7, age, Sexe)
 
-# Model B : WHODAS ~ PHQ9 + SSS + GAD + BIPQ
-modelB <- lm(Score_whodas ~ score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ, data = dat_bis)
+dat_clean <- dat_bis[complete.cases(dat_bis[, c(
+  "age",
+  "Sexe",
+  "Score_whodas",
+  "score_PHQ9",
+  "Score_autostigma",
+  "score_GAD7",
+  "Score_BIPQ"
+)]), ]
 
-anova_result <- anova(modelA, modelB)
+# Model A : WHODAS ~ Age + Sex
+modelA <- lm(Score_whodas ~ age + Sexe, data = dat_clean)
+
+# Model B : WHODAS ~ Age + Sex + PHQ9 + SSS + GAD
+modelB <- lm(Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + score_GAD7, data = dat_clean)
+
+# Model C : WHODAS ~ Age + Sex + PHQ9 + SSS + GAD + BIPQ
+modelC <- lm(Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ, data = dat_clean)
+
+anova_result <- anova(modelA, modelB, modelC)
 anova_result
 
 
 ```
 
+```{r}
+r2 <- function(m) summary(m)$r.squared
+
+model1 <- lm(
+  Score_whodas ~ age + Sexe,
+  data = dat_clean
+)
+
+model2 <- lm(
+  Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + score_GAD7,
+  data = dat_clean
+)
+
+model3 <- lm(
+  Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ,
+  data = dat_clean
+)
+
+r2_table <- data.frame(
+  Model = c("Step 1: age + sex",
+            "Step 2: + PHQ-9 + SSS-S + GAD-7",
+            "Step 3: + BIPQ"),
+  R2 = c(r2(model1), r2(model2), r2(model3))
+)
+
+r2_table$Delta_R2 <- c(NA, diff(r2_table$R2))
+
+r2_table$R2_percent <- round(r2_table$R2 * 100, 2)
+r2_table$Delta_R2_percent <- round(r2_table$Delta_R2 * 100, 2)
+
+r2_table %>% kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
+```
+
+```{r, echo=FALSE}
+
+r2_1 <- r2(model1)
+r2_2 <- r2(model2)
+r2_3 <- r2(model3)
+# Ordre des composants
+order_blocks <- c(
+  "Age + sex",
+  "PHQ-9 + SSS-S + GAD-7",
+  "BIPQ",
+  "Unexplained"
+)
+
+fill_blocks <- c(
+  "Age + sex"                    = "#3A67A4",
+  "PHQ-9 + SSS-S + GAD-7"  = "#B2A5D1",
+  "BIPQ"                         = "#29A274",
+  "Unexplained"                  = "#E9E7E1"
+)
+
+# Table des incréments
+block_table <- tibble(
+  Component = c(
+    "Age + sex",
+    "PHQ-9 + SSS-S + GAD-7",
+    "BIPQ",
+    "Unexplained"
+  ),
+  Value = c(
+    r2_1,
+    r2_2 - r2_1,
+    r2_3 - r2_2,
+    1 - r2_3
+  )
+) %>%
+  mutate(
+    Percent = Value * 100,
+    Label = sprintf("%.2f%%", Percent),
+    Component = factor(Component, levels = order_blocks)
+  ) %>%
+  arrange(Component) %>%
+  mutate(
+    xmin = lag(cumsum(Percent), default = 0),
+    xmax = cumsum(Percent),
+    xmid = (xmin + xmax) / 2,
+    
+    # Label BIPQ placé au-dessus car segment trop petit
+    label_x = ifelse(Component == "BIPQ", xmax + 3, xmid),
+    label_y = ifelse(Component == "BIPQ", 1.32, 1)
+  )
+
+
+ggplot(block_table) +
+  geom_rect(
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 0.8,
+      ymax = 1.2,
+      fill = Component
+    )
+  ) +
+  geom_text(
+    aes(
+      x = label_x,
+      y = label_y,
+      label = Label
+    ),
+    size = 3.3
+  ) +
+  geom_segment(
+    data = block_table %>% filter(Component == "BIPQ"),
+    aes(
+      x = xmid,
+      xend = label_x,
+      y = 1.18,
+      yend = 1.27
+    ),
+    linewidth = 0.3
+  ) +
+  scale_fill_manual(
+    values = fill_blocks,
+    breaks = order_blocks[order_blocks != "Unexplained"],
+    name = NULL
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 100, 10),
+    labels = function(x) paste0(x, "%"),
+    limits = c(0, 105),
+    expand = c(0, 0)
+  ) +
+  labs(
+    x = "Percentage of WHODAS-12 variance",
+    y = NULL,
+    title = sprintf("WHODAS-12 — hierarchical explained variance, total R² = %.2f%%", r2_3 * 100)
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+```
+
+
+```{r}
+
+r2 <- function(m) summary(m)$r.squared
+
+model_full <- lm(
+  Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ,
+  data = dat_clean
+)
+
+r2_full <- r2(model_full)
+
+unique_table_block <- tibble(
+  Predictor = c(
+    "Age + sex",
+    "PHQ-9",
+    "Self-stigma",
+    "GAD-7",
+    "BIPQ"
+  ),
+  Unique_R2 = c(
+    r2_full - r2(lm(
+      Score_whodas ~ score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ,
+      data = dat_clean
+    )),
+    
+    r2_full - r2(lm(
+      Score_whodas ~ age + Sexe + Score_autostigma + score_GAD7 + Score_BIPQ,
+      data = dat_clean
+    )),
+    
+    r2_full - r2(lm(
+      Score_whodas ~ age + Sexe + score_PHQ9 + score_GAD7 + Score_BIPQ,
+      data = dat_clean
+    )),
+    
+    r2_full - r2(lm(
+      Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + Score_BIPQ,
+      data = dat_clean
+    )),
+    
+    r2_full - r2(lm(
+      Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + score_GAD7,
+      data = dat_clean
+    ))
+  )
+) %>%
+  mutate(
+    Percent = Unique_R2 * 100,
+    Label = paste0(round(Percent, 2), "%")
+  )
+
+unique_table_block %>% kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
+```
+
+```{r, echo=FALSE}
+# =========================
+# Table des variances uniques
+# =========================
+# J'utilise ici tes valeurs déjà calculées
+unique_plot <- tibble(
+  Component = c("Age + sex", "PHQ-9", "Self-stigma", "GAD-7", "BIPQ"),
+  Percent = c(1.35123818, 6.55370848, 0.20984138, 2.31791288, 0.09963607)
+)
+
+# Ordre d'affichage
+order_unique <- c("Age + sex", "PHQ-9", "Self-stigma", "GAD-7", "BIPQ")
+
+
+# Préparation des positions
+unique_plot <- unique_table_block %>%
+  transmute(
+    Component = Predictor,
+    Percent = Percent
+  ) %>%
+  mutate(
+    Component = recode(Component, "Self-stigma" = "SSS-S")
+  ) %>%
+  arrange(desc(Percent)) %>%
+  mutate(
+    Component = factor(Component, levels = Component),
+    Label = sprintf("%.2f%%", Percent),
+    xmin = lag(cumsum(Percent), default = 0),
+    xmax = cumsum(Percent),
+    xmid = (xmin + xmax) / 2,
+
+    label_text = case_when(
+      Component == "SSS-S" ~ paste0("SSS-S: ", Label),
+      Component == "BIPQ"  ~ paste0("BIPQ: ", Label),
+      TRUE ~ Label
+    ),
+
+    label_x = case_when(
+      Component == "SSS-S" ~ xmid,       # SSS-S au-dessus
+      Component == "BIPQ"  ~ xmax + 0.8, # BIPQ à droite
+      TRUE ~ xmid
+    ),
+
+    label_y = case_when(
+      Component == "SSS-S" ~ 1.55,
+      Component == "BIPQ"  ~ 1.00,
+      TRUE ~ 1.00
+    ),
+
+    hjust_label = case_when(
+      Component == "BIPQ" ~ 0,
+      TRUE ~ 0.5
+    )
+  )
+
+fill_unique <- c(
+  "PHQ-9"     = "#3A67A4",
+  "GAD-7"     = "#60CDA0",
+  "Age + sex" = "#B2A5D1",
+  "SSS-S"     = "#E68613",
+  "BIPQ"      = "#7B2CBF"
+)
+
+ggplot(unique_plot) +
+  geom_rect(
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 0.8,
+      ymax = 1.2,
+      fill = Component
+    )
+  ) +
+
+  # Labels
+  geom_text(
+    aes(
+      x = label_x,
+      y = label_y,
+      label = label_text,
+      hjust = hjust_label
+    ),
+    size = 3.3
+  ) +
+
+  # Trait vertical pour SSS-S
+  geom_segment(
+    data = unique_plot %>% filter(Component == "SSS-S"),
+    aes(
+      x = xmid,
+      xend = xmid,
+      y = 1.2,
+      yend = 1.45
+    ),
+    linewidth = 0.3
+  ) +
+
+  # Trait horizontal pour BIPQ
+  geom_segment(
+    data = unique_plot %>% filter(Component == "BIPQ"),
+    aes(
+      x = xmax,
+      xend = label_x - 0.15,
+      y = 1.0,
+      yend = 1.0
+    ),
+    linewidth = 0.3
+  ) +
+
+  scale_fill_manual(
+    values = fill_unique,
+    breaks = levels(unique_plot$Component),
+    name = NULL,
+    guide = guide_legend(nrow = 1, byrow = TRUE)
+  ) +
+
+  scale_x_continuous(
+    breaks = seq(0, 14, 1),
+    labels = function(x) paste0(x, "%"),
+    limits = c(0, 14),
+    expand = c(0, 0)
+  ) +
+
+  coord_cartesian(ylim = c(0.75, 1.70), clip = "off") +
+
+  labs(
+    x = "Unique variance explained in WHODAS-12",
+    y = NULL,
+    title = "WHODAS-12 — unique contributions",
+    subtitle = ""
+  ) +
+
+  theme_minimal(base_size = 11) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    legend.spacing.x = unit(0.8, "cm"),
+    legend.key.width = unit(0.9, "cm"),
+    legend.text = element_text(size = 9),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+```
+
+
+
 
 ## with yhat
 ```{r}
 ## Commonality analysis 
-dat_clean <- dat_bis[complete.cases(dat_bis[, c("Score_whodas",
-                                             "score_PHQ9",
-                                             "Score_autostigma",
-                                             "score_GAD7",
-                                             "Score_BIPQ")]), ]
-# 1574 observations
 
-res_lm <- lm(Score_whodas ~ score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ,
+res_lm <- lm(Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ,
              data = dat_clean)
 res_dom <- calc.yhat(res_lm)
 boot.out = boot(data=dat_clean, yhat::boot.yhat, 1000, 
                 lmOut=res_lm, regrout0=res_dom)
+
 boot_results = booteval.yhat(res_dom, boot.out,bty="perc",.95,3)
 
-results_filtered <- boot_results$combCIaps["score_PHQ9,Score_autostigma,score_GAD7", "Score_BIPQ.Inc"] # First, the proportion of Whodas variance explained by the three questions, then the incremental validity of the BIPQ.
+results_filtered <- boot_results$combCIaps["age,Sexe,score_PHQ9,Score_autostigma,score_GAD7", "Score_BIPQ.Inc"] # First, the proportion of Whodas variance explained by the three questions, then the incremental validity of the BIPQ.
 
 print(results_filtered)
 
-
-
 ```
+
+
+
+
 
