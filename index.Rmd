@@ -746,10 +746,10 @@ BIPQ =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + stigma_percept_
 GAD7 =~ nerveux + inquiet + inquiet_exces + difficult_detente + agitation + tendance_contrarie + sentiment_peur
 BIPQ ~~ GAD7'
 
-fit_GAD <- cfa(cfa_model_GAD, 
-               data = data_gad, 
-               estimator = "MLR",                 
-               std.lv = TRUE)
+# fit_GAD <- cfa(cfa_model_GAD, 
+#                data = data_gad, 
+#                estimator = "MLR",                 
+#                std.lv = TRUE)
 
 #summary(fit_GAD, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
 fitMeasures(fit_GAD, c("cfi", "tli", "rmsea", "srmr"))
@@ -758,6 +758,7 @@ fit_GAD_Missing <- cfa(
   cfa_model_GAD,
   data = data_gad,
   estimator = "MLR",
+  std.lv = TRUE,
   missing = "fiml"
 )
 #summary(fit_GAD_Missing, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
@@ -814,8 +815,8 @@ cfa_model_GAD_1 <- '
 BIPQGAD =~ stigma_percept_1 + stigma_percept_5 + stigma_percept_6 + stigma_percept_8 + stigma_percept_3 + stigma_percept_4 + stigma_percept_7 + stigma_percept_2
  + nerveux + inquiet + inquiet_exces + difficult_detente + agitation + tendance_contrarie + sentiment_peur
 '
-fit_GAD_1 <- cfa(cfa_model_GAD_1, data = data_gad, estimator = "MLR")
-summary(fit_GAD_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+# fit_GAD_1 <- cfa(cfa_model_GAD_1, data = data_gad, estimator = "MLR")
+# summary(fit_GAD_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
 
 fit_GAD_Missing_1 <- cfa(
   cfa_model_GAD_1,
