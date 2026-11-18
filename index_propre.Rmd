@@ -1,0 +1,3195 @@
+---
+title: 'Supplementary for : '
+author: "Miss Blandine, Prof Yannick, and the rest (the plebe people)"
+date: '2025-09-17'
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    encoding: UTF-8
+  pdat_document:
+    toc: true
+---
+
+```{r, echo=FALSE}
+# control + alt + i = crée un bloc de code
+# les #, ##, ### hors des blocs de code = niveaux de titre (1, 2, 3)
+# kniter pour rendre le format HTML
+# créer un ficher .gitignore (tu vas dans le terminal click droit sur le dossier git et tu tapes : touch .gitignore) et rentrer le nom de votre fichier de données pour ne pas le rendre accessible gratuitement sur github (quoi que si tu fais l'erreur, j'en profiterai!! :) )
+```
+
+```{r, echo=FALSE, message=FALSE, results='hide', warning=FALSE}
+
+# j'ai enlevé les install packages, énormément de place pour peu de bénéfice, on sait tous installer un package ici, nous sommes des gens civilisés :) 
+# {r, echo=FALSE, message=FALSE, results='hide', warning=FALSE} => veut dire de cacher le text (echo=FALSE) et l'output (des warning au chargement de chaque package)
+# globalement c'est une très mauvaise pratique de charger toutes les library car ça peut créer des conflicts. Pour les packages dont on utilise une seule fonction une fois, préférer nom_dupackage::nom_de_la_fonction()
+
+library(summarytools)
+library(psych)
+library(psychTools)
+library(psy)
+library(lavaan)
+library(parameters)
+library(datawizard)
+library(dplyr)
+library(kableExtra)
+library(semTools)
+library(tidySEM)
+library(lavaanPlot)
+library(BifactorIndicesCalculator)
+library(tidyLPA)
+library(table1)
+library(readxl)
+library(psych)
+library(corrplot)
+library(ggplot2)
+library(MASS)
+library(yhat)
+library(boot)
+library(lavaanPlot)
+library(semPlot)
+library(tidyr)
+```
+
+```{r, echo=FALSE, message=FALSE, results='hide', warning=FALSE}
+
+dat <-read_excel("C:/Users/Blandine _Thibout/Searches/Etude_psycho_BIPQ/BIPQ/BIPQ_102026.Xlsx")
+
+num_vars <- c(
+  "age", 
+  "stigma_percept_1","stigma_percept_2","stigma_percept_3","stigma_percept_4",
+  "stigma_percept_5","stigma_percept_6","stigma_percept_7","stigma_percept_8", "Score_lubben", "score_PHQ9", "DIAG_NOW_3_Age", "nb_maladies_psy", "nb_maladies_somatiques", "nb_PEC1", "nb_PEC2","Score_BIPQ", "Score_whodas", "score_GAD7", "Score_autostigma"
+)
+
+to_num <- function(x) {
+  x <- trimws(as.character(x))
+  x <- gsub(",", ".", x, fixed = TRUE)
+  suppressWarnings(as.numeric(x))
+}
+
+dat[num_vars] <- lapply(dat[num_vars], to_num)
+
+
+
+#### Data management express
+# recup année début d'épisode en cours
+
+library(lubridate)
+# Convertir d'abord les dates (adapter le format si besoin, voir plus bas)
+dat$DIAG_NOW_4 <- as.POSIXct(dat$DIAG_NOW_4, tz = "Europe/Paris")
+dat$DateValidation_J0 <- as.POSIXct(dat$DateValidation_J0, tz = "Europe/Paris")
+
+# Puis calculer
+dat$annee_dep <- year(dat$DIAG_NOW_4)
+dat$diff_mois <- interval(dat$DIAG_NOW_4, dat$DateValidation_J0) %/% months(1)
+
+# Numeric
+dat$diff_mois <- as.numeric(dat$diff_mois)
+dat$annee_dep <- as.numeric(dat$annee_dep)
+
+dat <- dat %>%
+  mutate(age_classe = case_when(
+    age >= 18 & age < 25 ~ "18-24",
+    age >= 25 & age < 35 ~ "25-34",
+    age >= 35 & age < 45 ~ "35-44",
+    age >= 45 & age < 55 ~ "45-54",
+    age >= 55 & age < 65 ~ "55-64",
+    age >= 65 & age < 75 ~ "65-74",
+    age >= 75 & age <= 100 ~ "75+",
+    TRUE ~ NA_character_
+  ))
+
+dat <- dat %>%
+  rename(
+    `item 1` = stigma_percept_1,
+    `item 2` = stigma_percept_2,
+    `item 3` = stigma_percept_3,
+    `item 4` = stigma_percept_4,
+    `item 5` = stigma_percept_5,
+    `item 6` = stigma_percept_6,
+    `item 7` = stigma_percept_7,
+    `item 8` = stigma_percept_8
+  )
+
+dat$GAD7_cat <- cut(
+  dat$score_GAD7,
+  breaks = c(-Inf, 4, 9, 14, 21),
+  labels = c(
+    "None to minimal anxiety",
+    "Mild anxiety",
+    "Moderate anxiety",
+    "Severe anxiety"
+  ),
+  right = TRUE
+)
+
+# créer les items numériques de la PHQ9
+
+dat <- dat %>%
+  mutate(interet_plaisir = case_when(
+    interet_plaisir == "Jamais" ~ "0",
+    interet_plaisir == "Plusieurs jours" ~ "1",
+    interet_plaisir == "Plus de la moitié du temps" ~ "2",
+    interet_plaisir == "Presque tous les jours" ~ "3",
+    TRUE ~ NA_character_
+  ))
+
+dat <- dat %>%
+  mutate(triste_deprime = case_when(
+    triste_deprime == "Jamais" ~ "0",
+    triste_deprime == "Plusieurs jours" ~ "1",
+    triste_deprime == "Plus de la moitié du temps" ~ "2",
+    triste_deprime == "Presque tous les jours" ~ "3",
+    TRUE ~ NA_character_
+  ))
+
+dat <- dat %>%
+  mutate(sommeil = case_when(
+    sommeil == "Jamais" ~ "0",
+    sommeil == "Plusieurs jours" ~ "1",
+    sommeil == "Plus de la moitié du temps" ~ "2",
+    sommeil == "Presque tous les jours" ~ "3",
+    TRUE ~ NA_character_
+  ))
+
+dat <- dat %>%
+  mutate(fatigue = case_when(
+    fatigue == "Jamais" ~ "0",
+    fatigue == "Plusieurs jours" ~ "1",
+    fatigue == "Plus de la moitié du temps" ~ "2",
+    fatigue == "Presque tous les jours" ~ "3",
+    TRUE ~ NA_character_
+  ))
+
+dat <- dat %>%
+  mutate(appetit = case_when(
+    appetit == "Jamais" ~ "0",
+    appetit == "Plusieurs jours" ~ "1",
+    appetit == "Plus de la moitié du temps" ~ "2",
+    appetit == "Presque tous les jours" ~ "3",
+    TRUE ~ NA_character_
+  ))
+
+dat <- dat %>%
+  mutate(opinion_soi = case_when(
+    opinion_soi == "Jamais" ~ "0",
+    opinion_soi == "Plusieurs jours" ~ "1",
+    opinion_soi == "Plus de la moitié du temps" ~ "2",
+    opinion_soi == "Presque tous les jours" ~ "3",
+    TRUE ~ NA_character_
+  ))
+
+dat <- dat %>%
+  mutate(concentration = case_when(
+    concentration == "Jamais" ~ "0",
+    concentration == "Plusieurs jours" ~ "1",
+    concentration == "Plus de la moitié du temps" ~ "2",
+    concentration == "Presque tous les jours" ~ "3",
+    TRUE ~ NA_character_
+  ))
+
+dat <- dat %>%
+  mutate(activite = case_when(
+    activite == "Jamais" ~ "0",
+    activite == "Plusieurs jours" ~ "1",
+    activite == "Plus de la moitié du temps" ~ "2",
+    activite == "Presque tous les jours" ~ "3",
+    TRUE ~ NA_character_
+  ))
+
+dat <- dat %>%
+  mutate(mourir_mal = case_when(
+    mourir_mal == "Jamais" ~ "0",
+    mourir_mal == "Plusieurs jours" ~ "1",
+    mourir_mal == "Plus de la moitié du temps" ~ "2",
+    mourir_mal == "Presque tous les jours" ~ "3",
+    TRUE ~ NA_character_
+  ))
+
+dat$interet_plaisir <- as.numeric(dat$interet_plaisir)
+dat$triste_deprime <- as.numeric(dat$triste_deprime)
+dat$sommeil <- as.numeric(dat$sommeil)
+dat$fatigue <- as.numeric(dat$fatigue)
+dat$appetit <- as.numeric(dat$appetit)
+dat$opinion_soi <- as.numeric(dat$opinion_soi)
+dat$concentration <- as.numeric(dat$concentration)
+dat$activite <- as.numeric(dat$activite)
+dat$mourir_mal <- as.numeric(dat$mourir_mal)
+
+
+
+
+```
+
+```{r, echo=FALSE, message=FALSE, results='hide', warning=FALSE}
+
+# filtre sur la bonne population : on est sur les patients actuellement en dépression
+# diag par un medecin
+dat <- dat %>%
+  filter(DIAG_NOW_1 %in% c(
+    "Par un psychiatre",
+    "Par un médecin généraliste",
+    "Par un autre médecin"
+  ))
+# non bipolaires
+dat <- dat %>%
+  filter(DIAG_7 != "Oui")
+# BIPQ remplie 
+dat <- dat %>%
+  filter(!is.na(Score_BIPQ))
+# PHQ9 remplie 
+dat <- dat %>%
+  filter(!is.na(score_PHQ9))
+# SSS-S remplie
+dat <- dat %>%
+  filter(!is.na(Score_autostigma))
+dat <- dat %>%
+  filter(!is.na(Stigma_ext_1))
+dat <- dat %>%
+  filter(!is.na(Stigma_ext_2))
+dat <- dat %>%
+  filter(!is.na(Stigma_ext_3))
+dat <- dat %>%
+  filter(!is.na(Stigma_ext_4))
+dat <- dat %>%
+  filter(!is.na(Stigma_ext_5))
+# WHODAS remplie
+dat <- dat %>%
+  filter(!is.na(Score_whodas))
+
+
+```
+
+
+# S1. Sample description
+
+The data are in French but have been translated in the article.
+
+```{r table1_socio, results='asis', echo=FALSE}
+caption <- "Charactéristiques sociodémographiques"
+
+dat$Sexe<-factor(dat$Sexe) 
+dat$age_classe<-factor(dat$age_classe) 
+dat$situation_emploi_ini<-factor(dat$situation_emploi_ini) 
+dat$situation_financiere<-factor(dat$situation_financiere) 
+dat$diplome_ini<-factor(dat$diplome_ini)
+dat$DEM_3_Aide<-factor(dat$DEM_3_Aide)
+
+label(dat$age_classe) <- "Classe d'âge"
+label(dat$situation_emploi_ini) <- "Situation d'emploi"
+label(dat$situation_financiere) <- "Situation financière"
+label(dat$diplome_ini) <- "Niveau de diplôme"
+label(dat$DEM_3_Aide) <- "Statut d'aidant"
+label(dat$Score_lubben) <- "Score Lubben"
+
+# j'ai remis ici uniquement ce dont on se sert pour le papier 
+table1(~  Sexe + age_classe + age + diplome_ini+ situation_financiere +  DEM_3_Aide  , data=dat, caption=caption)
+
+```
+
+```{r table1_clinique, results='asis', echo=FALSE}
+caption <- "Charactéristiques cliniques"
+
+dat$score_PHQ9_f<-factor(dat$score_PHQ9_f) 
+dat$DIAG_7<-factor(dat$DIAG_7) 
+dat$DIAG_NOW_1<-factor(dat$DIAG_NOW_1) 
+dat$DIAG_NOW_3<-factor(dat$DIAG_NOW_3) 
+dat$DIAG_NOW_2<-factor(dat$DIAG_NOW_2)
+dat$DIAG_6<-factor(dat$DIAG_6) 
+dat$PEC_PREV_10<-factor(dat$PEC_PREV_10) 
+dat$PEC_18<-factor(dat$PEC_18)
+dat$PEC_12<-factor(dat$PEC_12) 
+dat$PEC_NOW_9<-factor(dat$PEC_NOW_9)
+dat$GAD7_cat<- factor(dat$GAD7_cat)
+label(dat$score_PHQ9_f) <- "Classe score PHQ9"
+label(dat$score_PHQ9) <- "Score PHQ9"
+label(dat$DIAG_7) <- "Diagnostic trouble bipolaire"
+label(dat$DIAG_NOW_1) <- "Diagnostic posé par : "
+label(dat$DIAG_NOW_3) <- "Nombre d'épisodes"
+label(dat$DIAG_NOW_3_Age) <- "Age au 1er épisode"
+label(dat$diff_mois) <- "Durée de l'épisode en cours (mois)"
+label(dat$DIAG_NOW_2) <- "Post partum"
+label(dat$nb_maladies_psy) <- "Comorbiditées psy"
+label(dat$nb_maladies_somatiques) <- "Comorbidités somatiques"
+label(dat$nb_PEC1) <- "Nombre d'antidépresseurs"
+label(dat$nb_PEC2) <- "Nombre de Thymorégulateurs"
+label(dat$DIAG_6) <- "Nombre d'hospitalisations psy"
+label(dat$PEC_PREV_10) <- "Suivi d'une psychothérapie au cours de la vie"
+label(dat$PEC_18) <- "Recours à la médecine alternative"
+label(dat$PEC_12) <- "Participation réhabilitation cognitive"
+label(dat$PEC_NOW_9) <- "Psychothérapie dans les 12 derniers mois"
+label(dat$Score_BIPQ) <- "Score BIPQ"
+label(dat$Score_whodas) <- "Score whodas"
+label(dat$score_GAD7) <- "Score GAD7"
+label(dat$GAD7_cat) <- "classe Score GAD7"
+label(dat$Score_autostigma) <- "Score autostigma"
+
+
+# passer en EN + | Sexe aussi je pense -> sexe tjrs mm pb et en(j'ai déjà fais une table desc pour le papier je verrai à la fin si je prend le temps de le faire avec ça )
+table1(~ DIAG_NOW_1 + DIAG_NOW_3 + DIAG_NOW_3_Age + diff_mois + nb_maladies_somatiques + nb_maladies_psy +   nb_PEC1 + nb_PEC2 + DIAG_6 + PEC_PREV_10 + PEC_18 + PEC_12 + PEC_NOW_9 +  Score_whodas + score_PHQ9 +  score_PHQ9_f + Score_BIPQ + Score_autostigma + Stigma_ext_1 + Stigma_ext_2 + Stigma_ext_3 + Stigma_ext_4 + Stigma_ext_5 , data=dat, caption=caption)
+
+
+
+
+```
+
+# S2. Variable description {.tabste}
+
+#### Distributional characteristics of the scores used
+
+```{r, , echo=FALSE}
+# WHODAS
+ggplot(dat, aes(x = Score_whodas)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 10, fill = "grey80", color = "black",
+                 na.rm = TRUE) +
+  geom_density(na.rm = TRUE) +
+  labs(
+    title = "WHODAS-12 score distribution",
+    x = "WHODAS-12 score",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+```
+
+```{r, , echo=FALSE}
+# .tabset sert à organiser plus proprement
+#cherry on the cake des résidus de modèles
+
+# BIPQ
+ggplot(dat, aes(x = Score_BIPQ)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 10, fill = "grey80", color = "black",
+                 na.rm = TRUE) +
+  geom_density(na.rm = TRUE) +
+  labs(
+    title = "B-IPQ score distribution",
+    x = "B-IPQ score",
+    y = "Density"
+  ) +
+  theme_minimal()
+```
+
+
+
+```{r, , echo=FALSE}
+# PHQ-9
+ggplot(dat, aes(x = score_PHQ9)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 10, fill = "grey80", color = "black",
+                 na.rm = TRUE) +
+  geom_density(na.rm = TRUE) +
+  labs(
+    title = "PHQ-9 score distribution",
+    x = "PHQ-9 score",
+    y = "Density"
+  ) +
+  theme_minimal()
+```
+
+
+```{r, , echo=FALSE}
+# SSS
+ggplot(dat, aes(x = Score_autostigma)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 10, fill = "grey80", color = "black",
+                 na.rm = TRUE) +
+  geom_density(na.rm = TRUE) +
+  labs(
+    title = "SSS-S score distribution",
+    x = "SSS-S score",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+dat$Cognitive_sss <- rowSums(dat[, c("stigma_auto_1", "stigma_auto_2", "stigma_auto_3")])
+dat$Affective_sss <- rowSums(dat[, c("stigma_auto_4", "stigma_auto_5", "stigma_auto_6")])
+dat$Behavioural_sss <- rowSums(dat[, c("stigma_auto_7", "stigma_auto_8", "stigma_auto_9")])
+
+vars <- c("Cognitive_sss", "Affective_sss", "Behavioural_sss")
+
+
+# -----------------------------
+# 2) Data-visualisation globale avec dfSummary (mini histogrammes + NA, etc.)
+# -----------------------------
+dfs <- dfSummary(
+  dat[vars],
+  style      = "grid",
+  graph.col  = TRUE,   # mini-graphiques dans la colonne Graph
+  valid.col  = TRUE,
+  na.col     = TRUE
+)
+
+
+# ou rendu console / HTML
+print(dfs, method = "render")
+
+```
+
+
+
+
+# S3. Internal consistency {.tabset}
+
+## B-IPQ
+
+### Items Distribution
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE }
+
+# Garder uniquement les items B-IPQ
+items <- c("item 1", "item 2", "item 3", "item 4",
+           "item 5", "item 6", "item 7", "item 8")
+
+data_efa <- dat[, c(items)]
+
+vars <- paste0("item ", 1:8)
+
+d <- descr(
+  data_efa[vars],
+  stats = c("skewness", "kurtosis"),
+  transpose = TRUE
+)
+
+# Convertit l'objet summarytools en data.frame exploitable
+tab <- as.data.frame(d)
+
+# Les colonnes s'appellent généralement "Skewness" / "Kurtosis" (casse variable selon versions)
+
+skew_kurt_table <- data.frame(
+  variable = rownames(tab),
+  skewness = as.numeric(tab[[grep("skew", names(tab), ignore.case = TRUE, value = TRUE)[1]]]),
+  kurtosis = as.numeric(tab[[grep("kurt", names(tab), ignore.case = TRUE, value = TRUE)[1]]]),
+  row.names = NULL
+)
+
+skew_kurt_table$skewness <- round(skew_kurt_table$skewness, 2)
+skew_kurt_table$kurtosis <- round(skew_kurt_table$kurtosis, 2)
+
+
+# -----------------------------
+# 2) Data-visualisation globale avec dfSummary (mini histogrammes + NA, etc.)
+# -----------------------------
+dfs <- dfSummary(
+  data_efa[vars],
+  style      = "grid",
+  graph.col  = TRUE,   # mini-graphiques dans la colonne Graph
+  valid.col  = TRUE,
+  na.col     = TRUE
+)
+
+
+# ou rendu console / HTML
+print(dfs, method = "render")
+
+
+```
+
+### Skewness and kurtosis
+```{r, echo=FALSE, message=FALSE, warning=FALSE }
+
+# affichage skewness and kurtosis
+skew_kurt_table%>%
+  kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
+```
+
+
+
+### ICC
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+items <- data_efa[, c("item 1", "item 2", "item 3", "item 4",
+           "item 5", "item 6", "item 7", "item 8")]
+
+
+# Compute the Spearman correlation matrix
+iic <- cor(items, method = "spearman", use = "pairwise.complete.obs")
+round(iic, 2)  %>%
+  kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
+
+
+
+# Heatmap 
+corrplot(iic, method = "color", type = "upper",
+         addCoef.col = "black", # ajoute les valeurs
+         tl.col = "black", tl.srt = 45,
+         diag = FALSE)
+
+```
+
+### ITC
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+items <- data_efa[vars]
+
+# Cronbach alpha
+alpha_result <- psych::alpha(items, check.keys = FALSE)
+
+
+# Corrected item-total correlations (r.drop)
+r_drop <- alpha_result$item.stats$r.drop
+names(r_drop) <- colnames(items)
+
+alpha_table <- data.frame(
+  item = rownames(alpha_result$item.stats),
+  mean = alpha_result$item.stats$mean,
+  sd   = alpha_result$item.stats$sd,
+  r_drop = alpha_result$item.stats$r.drop,
+  alpha_if_deleted = alpha_result$alpha.drop$raw_alpha,
+  row.names = NULL
+)
+
+alpha_table%>%
+  kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
+
+```
+
+
+
+
+
+### Floor ceiling
+
+```{r,echo=FALSE, message=FALSE,  warning=FALSE}
+
+# items = data.frame d'items numériques
+floor_ceiling <- t(sapply(items, function(x) {
+  x <- x[is.finite(x)]
+  n <- length(x)
+  if (n == 0) return(c(Floor = NA_real_, Ceiling = NA_real_))
+
+  floor_effect   <- sum(x == min(x)) / n * 100
+  ceiling_effect <- sum(x == max(x)) / n * 100
+
+  c(Floor = round(floor_effect, 1), Ceiling = round(ceiling_effect, 1))
+}))
+
+floor_ceiling <- as.data.frame(floor_ceiling)
+floor_ceiling$item <- rownames(floor_ceiling)
+rownames(floor_ceiling) <- NULL
+
+
+
+stats <- data.frame(
+  item = names(items),
+  n    = sapply(items, function(x) sum(is.finite(x))),
+  min  = sapply(items, function(x) min(x, na.rm = TRUE)),
+  max  = sapply(items, function(x) max(x, na.rm = TRUE)),
+  mean = sapply(items, function(x) mean(x, na.rm = TRUE)),
+  sd   = sapply(items, function(x) sd(x, na.rm = TRUE))
+)
+
+report_tbl <- stats %>%
+  left_join(floor_ceiling, by = "item") %>%
+  mutate(
+    mean = round(mean, 2),
+    sd   = round(sd, 2)
+  )
+
+report_tbl %>%
+  kbl(caption = "Item-level descriptive statistics and floor/ceiling effects of the B-IPQ") %>%
+  kable_styling(full_width = FALSE) %>%
+  column_spec(1, bold = TRUE)
+
+
+```
+
+## PHQ-9
+
+### Items Distribution
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE }
+# Garde juste items de la PHQ-9
+
+items <- c("interet_plaisir", "triste_deprime", "sommeil", "fatigue",
+           "appetit", "opinion_soi", "concentration", "activite", "mourir_mal")
+
+data_efa_phq <- dat[, c(items)]
+
+data_efa_phq <- data_efa_phq %>%
+   rename(
+    `item 1` = interet_plaisir,
+    `item 2` = triste_deprime,
+    `item 3` = sommeil,
+    `item 4` = fatigue,
+    `item 5` = appetit,
+    `item 6` = opinion_soi,
+    `item 7` = concentration,
+    `item 8` = activite,
+    `item 9` = mourir_mal
+  )
+vars <- paste0("item ", 1:9)
+
+d <- descr(
+  data_efa_phq[vars],
+  stats = c("skewness", "kurtosis"),
+  transpose = TRUE
+)
+
+# Convertit l'objet summarytools en data.frame exploitable
+tab <- as.data.frame(d)
+
+# Les colonnes s'appellent généralement "Skewness" / "Kurtosis" (casse variable selon versions)
+
+skew_kurt_table <- data.frame(
+  variable = rownames(tab),
+  skewness = as.numeric(tab[[grep("skew", names(tab), ignore.case = TRUE, value = TRUE)[1]]]),
+  kurtosis = as.numeric(tab[[grep("kurt", names(tab), ignore.case = TRUE, value = TRUE)[1]]]),
+  row.names = NULL
+)
+
+skew_kurt_table$skewness <- round(skew_kurt_table$skewness, 2)
+skew_kurt_table$kurtosis <- round(skew_kurt_table$kurtosis, 2)
+
+
+# -----------------------------
+# 2) Data-visualisation globale avec dfSummary (mini histogrammes + NA, etc.)
+# -----------------------------
+dfs <- dfSummary(
+  data_efa_phq[vars],
+  style      = "grid",
+  graph.col  = TRUE,   # mini-graphiques dans la colonne Graph
+  valid.col  = TRUE,
+  na.col     = TRUE
+)
+
+
+# ou rendu console / HTML
+print(dfs, method = "render")
+
+
+```
+
+### Skewness and kurtosis
+```{r, echo=FALSE, message=FALSE, warning=FALSE }
+
+# affichage skewness and kurtosis
+skew_kurt_table%>%
+  kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
+```
+
+### ICC
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+items <- data_efa_phq[, c("item 1", "item 2", "item 3", "item 4",
+           "item 5", "item 6", "item 7", "item 8", "item 9")]
+
+
+# Compute the Spearman correlation matrix
+iic <- cor(items, method = "spearman", use = "pairwise.complete.obs")
+round(iic, 2)  %>%
+  kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
+
+
+
+# Heatmap 
+
+corrplot(iic, method = "color", type = "upper",
+         addCoef.col = "black", # ajoute les valeurs
+         tl.col = "black", tl.srt = 45,
+         diag = FALSE)
+
+```
+
+
+### ITC
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+items <- data_efa_phq[vars]
+
+# Cronbach alpha
+alpha_result <- psych::alpha(items, check.keys = FALSE)
+
+
+# Corrected item-total correlations (r.drop)
+r_drop <- alpha_result$item.stats$r.drop
+names(r_drop) <- colnames(items)
+
+alpha_table <- data.frame(
+  item = rownames(alpha_result$item.stats),
+  mean = alpha_result$item.stats$mean,
+  sd   = alpha_result$item.stats$sd,
+  r_drop = alpha_result$item.stats$r.drop,
+  alpha_if_deleted = alpha_result$alpha.drop$raw_alpha,
+  row.names = NULL
+)
+
+alpha_table%>%
+  kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
+
+```
+
+
+
+### Floor ceiling
+
+```{r,echo=FALSE, message=FALSE,  warning=FALSE}
+
+# items = data.frame d'items numériques
+floor_ceiling <- t(sapply(items, function(x) {
+  x <- x[is.finite(x)]
+  n <- length(x)
+  if (n == 0) return(c(Floor = NA_real_, Ceiling = NA_real_))
+
+  floor_effect   <- sum(x == min(x)) / n * 100
+  ceiling_effect <- sum(x == max(x)) / n * 100
+
+  c(Floor = round(floor_effect, 1), Ceiling = round(ceiling_effect, 1))
+}))
+
+floor_ceiling <- as.data.frame(floor_ceiling)
+floor_ceiling$item <- rownames(floor_ceiling)
+rownames(floor_ceiling) <- NULL
+
+
+
+stats <- data.frame(
+  item = names(items),
+  n    = sapply(items, function(x) sum(is.finite(x))),
+  min  = sapply(items, function(x) min(x, na.rm = TRUE)),
+  max  = sapply(items, function(x) max(x, na.rm = TRUE)),
+  mean = sapply(items, function(x) mean(x, na.rm = TRUE)),
+  sd   = sapply(items, function(x) sd(x, na.rm = TRUE))
+)
+
+report_tbl <- stats %>%
+  left_join(floor_ceiling, by = "item") %>%
+  mutate(
+    mean = round(mean, 2),
+    sd   = round(sd, 2)
+  )
+
+report_tbl %>%
+  kbl(caption = "Item-level descriptive statistics and floor/ceiling effects of the PHQ-9") %>%
+  kable_styling(full_width = FALSE) %>%
+  column_spec(1, bold = TRUE)
+
+
+```
+
+
+## WHODAS-12
+
+### Items Distribution
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE }
+# Garde juste items de la whodas-12
+
+items <- c(
+  "FONC_WHODAS_1",
+  "FONC_WHODAS_2",
+  "FONC_WHODAS_3",
+  "FONC_WHODAS_4",
+  "FONC_WHODAS_5",
+  "FONC_WHODAS_6",
+  "FONC_WHODAS_7",
+  "FONC_WHODAS_8",
+  "FONC_WHODAS_9",
+  "FONC_WHODAS_10",
+  "FONC_WHODAS_11",
+  "FONC_WHODAS_12"
+)
+
+data_efa_who <- dat[, c(items)]
+
+data_efa_who <- data_efa_who %>%
+  rename(
+    `item 1` = FONC_WHODAS_1,
+    `item 2` = FONC_WHODAS_2,
+    `item 3` = FONC_WHODAS_3,
+    `item 4` = FONC_WHODAS_4,
+    `item 5` = FONC_WHODAS_5,
+    `item 6` = FONC_WHODAS_6,
+    `item 7` = FONC_WHODAS_7,
+    `item 8` = FONC_WHODAS_8,
+    `item 9` = FONC_WHODAS_9,
+    `item 10` = FONC_WHODAS_10,
+    `item 11` = FONC_WHODAS_11,
+    `item 12` = FONC_WHODAS_12
+  )
+vars <- paste0("item ", 1:12)
+
+d <- descr(
+  data_efa_who[vars],
+  stats = c("skewness", "kurtosis"),
+  transpose = TRUE
+)
+
+# Convertit l'objet summarytools en data.frame exploitable
+tab <- as.data.frame(d)
+
+# Les colonnes s'appellent généralement "Skewness" / "Kurtosis" (casse variable selon versions)
+
+skew_kurt_table <- data.frame(
+  variable = rownames(tab),
+  skewness = as.numeric(tab[[grep("skew", names(tab), ignore.case = TRUE, value = TRUE)[1]]]),
+  kurtosis = as.numeric(tab[[grep("kurt", names(tab), ignore.case = TRUE, value = TRUE)[1]]]),
+  row.names = NULL
+)
+
+skew_kurt_table$skewness <- round(skew_kurt_table$skewness, 2)
+skew_kurt_table$kurtosis <- round(skew_kurt_table$kurtosis, 2)
+
+
+# -----------------------------
+# 2) Data-visualisation globale avec dfSummary (mini histogrammes + NA, etc.)
+# -----------------------------
+dfs <- dfSummary(
+  data_efa_who[vars],
+  style      = "grid",
+  graph.col  = TRUE,   # mini-graphiques dans la colonne Graph
+  valid.col  = TRUE,
+  na.col     = TRUE
+)
+
+
+# ou rendu console / HTML
+print(dfs, method = "render")
+
+
+```
+
+
+### Skewness and kurtosis
+```{r, echo=FALSE, message=FALSE, warning=FALSE }
+
+# affichage skewness and kurtosis
+skew_kurt_table%>%
+  kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
+```
+
+### ICC
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+items <- data_efa_who[, c("item 1", "item 2", "item 3", "item 4",
+           "item 5", "item 6", "item 7", "item 8", "item 9", "item 10", "item 11", "item 12")]
+
+
+# Compute the Spearman correlation matrix
+iic <- cor(items, method = "spearman", use = "pairwise.complete.obs")
+round(iic, 2)  %>%
+  kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
+
+
+
+# Heatmap 
+
+corrplot(iic, method = "color", type = "upper",
+         addCoef.col = "black", # ajoute les valeurs
+         tl.col = "black", tl.srt = 45,
+         diag = FALSE)
+
+```
+
+
+### ITC
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+items <- data_efa_who[vars]
+
+# Cronbach alpha
+alpha_result <- psych::alpha(items, check.keys = FALSE)
+
+
+# Corrected item-total correlations (r.drop)
+r_drop <- alpha_result$item.stats$r.drop
+names(r_drop) <- colnames(items)
+
+alpha_table <- data.frame(
+  item = rownames(alpha_result$item.stats),
+  mean = alpha_result$item.stats$mean,
+  sd   = alpha_result$item.stats$sd,
+  r_drop = alpha_result$item.stats$r.drop,
+  alpha_if_deleted = alpha_result$alpha.drop$raw_alpha,
+  row.names = NULL
+)
+
+alpha_table%>%
+  kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
+
+```
+
+
+
+### Floor ceiling
+
+```{r,echo=FALSE, message=FALSE,  warning=FALSE}
+
+# items = data.frame d'items numériques
+floor_ceiling <- t(sapply(items, function(x) {
+  x <- x[is.finite(x)]
+  n <- length(x)
+  if (n == 0) return(c(Floor = NA_real_, Ceiling = NA_real_))
+
+  floor_effect   <- sum(x == min(x)) / n * 100
+  ceiling_effect <- sum(x == max(x)) / n * 100
+
+  c(Floor = round(floor_effect, 1), Ceiling = round(ceiling_effect, 1))
+}))
+
+floor_ceiling <- as.data.frame(floor_ceiling)
+floor_ceiling$item <- rownames(floor_ceiling)
+rownames(floor_ceiling) <- NULL
+
+
+
+stats <- data.frame(
+  item = names(items),
+  n    = sapply(items, function(x) sum(is.finite(x))),
+  min  = sapply(items, function(x) min(x, na.rm = TRUE)),
+  max  = sapply(items, function(x) max(x, na.rm = TRUE)),
+  mean = sapply(items, function(x) mean(x, na.rm = TRUE)),
+  sd   = sapply(items, function(x) sd(x, na.rm = TRUE))
+)
+
+report_tbl <- stats %>%
+  left_join(floor_ceiling, by = "item") %>%
+  mutate(
+    mean = round(mean, 2),
+    sd   = round(sd, 2)
+  )
+
+report_tbl %>%
+  kbl(caption = "Item-level descriptive statistics and floor/ceiling effects of the PHQ-9") %>%
+  kable_styling(full_width = FALSE) %>%
+  column_spec(1, bold = TRUE)
+
+
+```
+
+
+## SSS-S
+
+### Items Distribution
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE }
+# Garde juste items de la SSS-S
+
+items <- c("stigma_auto_1", "stigma_auto_2", "stigma_auto_3", "stigma_auto_4", "stigma_auto_5", "stigma_auto_6", "stigma_auto_7", "stigma_auto_8", "stigma_auto_9")
+
+data_efa_sss <- dat[, c(items)]
+
+data_efa_sss <- data_efa_sss %>%
+  rename(
+    `item 1` = stigma_auto_1,
+    `item 2` = stigma_auto_2,
+    `item 3` = stigma_auto_3,
+    `item 4` = stigma_auto_4,
+    `item 5` = stigma_auto_5,
+    `item 6` = stigma_auto_6,
+    `item 7` = stigma_auto_7,
+    `item 8` = stigma_auto_8,
+    `item 9` = stigma_auto_9
+  )
+vars <- paste0("item ", 1:9)
+
+d <- descr(
+  data_efa_sss[vars],
+  stats = c("skewness", "kurtosis"),
+  transpose = TRUE
+)
+
+# Convertit l'objet summarytools en data.frame exploitable
+tab <- as.data.frame(d)
+
+# Les colonnes s'appellent généralement "Skewness" / "Kurtosis" (casse variable selon versions)
+
+skew_kurt_table <- data.frame(
+  variable = rownames(tab),
+  skewness = as.numeric(tab[[grep("skew", names(tab), ignore.case = TRUE, value = TRUE)[1]]]),
+  kurtosis = as.numeric(tab[[grep("kurt", names(tab), ignore.case = TRUE, value = TRUE)[1]]]),
+  row.names = NULL
+)
+
+skew_kurt_table$skewness <- round(skew_kurt_table$skewness, 2)
+skew_kurt_table$kurtosis <- round(skew_kurt_table$kurtosis, 2)
+
+
+# -----------------------------
+# 2) Data-visualisation globale avec dfSummary (mini histogrammes + NA, etc.)
+# -----------------------------
+dfs <- dfSummary(
+  data_efa_sss[vars],
+  style      = "grid",
+  graph.col  = TRUE,   # mini-graphiques dans la colonne Graph
+  valid.col  = TRUE,
+  na.col     = TRUE
+)
+
+
+# ou rendu console / HTML
+print(dfs, method = "render")
+```
+
+### Skewness and kurtosis
+```{r, echo=FALSE, message=FALSE, warning=FALSE }
+
+# affichage skewness and kurtosis
+skew_kurt_table%>%
+  kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
+```
+
+### ICC
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+items <- data_efa_sss[, c("item 1", "item 2", "item 3", "item 4",
+           "item 5", "item 6", "item 7", "item 8", "item 9")]
+
+
+# Compute the Spearman correlation matrix
+iic <- cor(items, method = "spearman", use = "pairwise.complete.obs")
+round(iic, 2)  %>%
+  kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
+
+
+
+# Heatmap 
+
+corrplot(iic, method = "color", type = "upper",
+         addCoef.col = "black", # ajoute les valeurs
+         tl.col = "black", tl.srt = 45,
+         diag = FALSE)
+
+```
+
+
+### ITC
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+items <- data_efa_sss[vars]
+
+# Cronbach alpha
+alpha_result <- psych::alpha(items, check.keys = FALSE)
+
+
+# Corrected item-total correlations (r.drop)
+r_drop <- alpha_result$item.stats$r.drop
+names(r_drop) <- colnames(items)
+
+alpha_table <- data.frame(
+  item = rownames(alpha_result$item.stats),
+  mean = alpha_result$item.stats$mean,
+  sd   = alpha_result$item.stats$sd,
+  r_drop = alpha_result$item.stats$r.drop,
+  alpha_if_deleted = alpha_result$alpha.drop$raw_alpha,
+  row.names = NULL
+)
+
+alpha_table%>%
+  kbl() %>%
+  kable_styling()%>%
+  column_spec(1, bold = TRUE)
+
+```
+
+
+
+### Floor ceiling
+
+```{r,echo=FALSE, message=FALSE,  warning=FALSE}
+
+# items = data.frame d'items numériques
+floor_ceiling <- t(sapply(items, function(x) {
+  x <- x[is.finite(x)]
+  n <- length(x)
+  if (n == 0) return(c(Floor = NA_real_, Ceiling = NA_real_))
+
+  floor_effect   <- sum(x == min(x)) / n * 100
+  ceiling_effect <- sum(x == max(x)) / n * 100
+
+  c(Floor = round(floor_effect, 1), Ceiling = round(ceiling_effect, 1))
+}))
+
+floor_ceiling <- as.data.frame(floor_ceiling)
+floor_ceiling$item <- rownames(floor_ceiling)
+rownames(floor_ceiling) <- NULL
+
+
+
+stats <- data.frame(
+  item = names(items),
+  n    = sapply(items, function(x) sum(is.finite(x))),
+  min  = sapply(items, function(x) min(x, na.rm = TRUE)),
+  max  = sapply(items, function(x) max(x, na.rm = TRUE)),
+  mean = sapply(items, function(x) mean(x, na.rm = TRUE)),
+  sd   = sapply(items, function(x) sd(x, na.rm = TRUE))
+)
+
+report_tbl <- stats %>%
+  left_join(floor_ceiling, by = "item") %>%
+  mutate(
+    mean = round(mean, 2),
+    sd   = round(sd, 2)
+  )
+
+report_tbl %>%
+  kbl(caption = "Item-level descriptive statistics and floor/ceiling effects of the PHQ-9") %>%
+  kable_styling(full_width = FALSE) %>%
+  column_spec(1, bold = TRUE)
+
+
+```
+
+
+
+# S4. Structural validity {.tabset}
+
+## B-IPQ
+### unidimensional CFA
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+data_efa_bipq <- data_efa %>%
+  rename(
+    item1 = `item 1`,
+    item2 = `item 2`,
+    item3 = `item 3`,
+    item4 = `item 4`,
+    item5 = `item 5`,
+    item6 = `item 6`,
+    item7 = `item 7`,
+    item8 = `item 8`
+  )
+```
+
+
+```{r}
+items_bipq <- paste0("item", 1:8)
+cfa_model <- '
+BIPQ =~ item1 + item2 + item3 + item4 +
+        item5 + item6 + item7 + item8
+'
+fit_bipq_1f <- cfa(
+  cfa_model,
+  data = data_efa_bipq,
+  estimator = "WLSMV",
+  ordered = items_bipq
+)
+summary(fit_bipq_1f, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+# Robust fit indices
+fitMeasures(
+  fit_bipq_1f,
+  c(
+    "cfi.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+
+```
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+
+library(semPlot)
+
+semPaths(
+  fit_bipq_1f,
+  what = "std",
+  whatLabels = "std",
+  layout = "tree",
+  style = "lisrel",
+  rotation = 2,
+
+  # Masquer les paramètres supplémentaires
+  residuals = FALSE,
+  intercepts = FALSE,
+  thresholds = FALSE,
+
+  # Affichage des variables
+  nCharNodes = 0,
+  sizeMan = 7,
+  sizeLat = 10,
+
+  # Affichage des coefficients
+  edge.label.cex = 1,
+  label.cex = 1,
+
+  # Apparence
+  color = "white",
+  edge.color = "black",
+  fade = FALSE,
+  mar = c(5, 5, 5, 5)
+)
+
+
+```
+
+
+Sensibility analysis with "MLR"
+```{r}
+
+cfa_model <- '
+BIPQ =~ item1 + item2 + item3 + item4 +
+        item5 + item6 + item7 + item8
+'
+fit_bipq_1fmlr <- cfa(
+  cfa_model,
+  data = data_efa_bipq,
+  estimator = "MLR"
+)
+summary(fit_bipq_1fmlr, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+# Robust fit indices
+fitMeasures(
+  fit_bipq_1fmlr,
+  c(
+    "cfi.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+
+```
+
+
+### CFA comparison
+
+The weak contribution of items 4 and 7 may reflect participants’ treatment appraisal and illness understanding, possibly linked to care engagement, psychotherapy exposure, repeated depressive episodes, or contact with specialized mental health care, rather than item misinterpretation.
+
+```{r, warning=FALSE}
+
+# alternative model 1
+
+cfa_model_multi <- '
+F1 =~ item1 + item5 + item6 + item8
+F2 =~ item3 + item4 + item7
+'
+
+fit_multi_bipq1 <- cfa(
+  cfa_model_multi,
+  data = data_efa_bipq,
+  estimator = "WLSMV",
+  ordered = paste0("item", c(1, 3, 4, 5, 6, 7, 8))
+)
+
+summary(
+  fit_multi_bipq1,
+  fit.measures = TRUE,
+  standardized = TRUE,
+  rsquare = TRUE
+)
+
+# Robust fit indices
+fitMeasures(
+  fit_multi_bipq1,
+  c(
+    "cfi.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+```
+```{r, warning=FALSE}
+
+# alternative model 2
+
+cfa_model_multi_2 <- '
+F1 =~ item1 + item2 + item5 + item6 + item8
+F2 =~ item3 + item4 + item7
+'
+
+fit_multi_bipq2 <- cfa(
+  cfa_model_multi_2,
+  data = data_efa_bipq,
+  estimator = "WLSMV",
+  ordered = paste0("item", 1:8)
+)
+
+summary(
+  fit_multi_bipq2,
+  fit.measures = TRUE,
+  standardized = TRUE,
+  rsquare = TRUE
+)
+
+# Robust fit indices
+fitMeasures(
+  fit_multi_bipq2,
+  c(
+    "cfi.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+```
+
+Sensitivity analysis with MLR 
+
+```{r, warning=FALSE}
+
+### model 1 
+
+cfa_model_multi <- '
+F1 =~ item1 + item5 + item6 + item8
+F2 =~ item3 + item4 + item7
+# Item 2 was not assigned to any factor and was retained as an independent item.
+'
+fit_multi_bipqmlr1 <- cfa(cfa_model_multi, data = data_efa_bipq, estimator = "MLR")
+summary(fit_multi_bipqmlr1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+# Robust fit indices
+fitMeasures(
+  fit_multi_bipqmlr1,
+  c(
+    "cfi.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+
+### model 2 
+
+cfa_model_multi_2 <- '
+F1 =~ item1 + item2 + item5 + item6 + item8
+F2 =~ item3 + item4 + item7
+'
+fit_multi_bipqmlr2 <- cfa(cfa_model_multi_2, data = data_efa_bipq, estimator = "MLR")
+
+summary(fit_multi_bipqmlr2, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+
+# Robust fit indices
+fitMeasures(
+  fit_multi_bipqmlr2,
+  c(
+    "cfi.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+```
+
+Both previously reported two-factor B-IPQ models yielded inadmissible solutions under WLSMV estimation, with negative residual variances for item 3 (−2.416 and −2.789 for the first and second models, respectively) and standardised factor loadings exceeding 1 (1.848 and 1.947, respectively). Sensitivity analyses using MLR yielded the same estimation issue, with negative residual variances for item 3 (−6.754 and −6.962, respectively) and standardised loadings of 1.450 and 1.461, respectively.
+
+
+## PHQ-9
+### unidimensional CFA
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+data_efa_phq <- data_efa_phq %>%
+  rename(
+    item1 = `item 1`,
+    item2 = `item 2`,
+    item3 = `item 3`,
+    item4 = `item 4`,
+    item5 = `item 5`,
+    item6 = `item 6`,
+    item7 = `item 7`,
+    item8 = `item 8`,
+    item9 = `item 9`
+  )
+```
+
+
+```{r}
+items_phq <- paste0("item", 1:9)
+cfa_model <- '
+PHQ9 =~ item1 + item2 + item3 + item4 +
+        item5 + item6 + item7 + item8 + item9
+'
+fit_phq_1f <- cfa(
+  cfa_model,
+  data = data_efa_phq,
+  estimator = "WLSMV",
+  ordered = items_phq
+)
+summary(fit_phq_1f, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+
+# Robust fit indices
+fitMeasures(
+  fit_phq_1f,
+  c(
+    "cfi.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+
+
+```
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+
+semPaths(
+  fit_phq_1f,
+  what = "std",
+  whatLabels = "std",
+  layout = "tree",
+  style = "lisrel",
+  rotation = 2,
+
+  # Masquer les paramètres supplémentaires
+  residuals = FALSE,
+  intercepts = FALSE,
+  thresholds = FALSE,
+
+  # Affichage des variables
+  nCharNodes = 0,
+  sizeMan = 7,
+  sizeLat = 10,
+
+  # Affichage des coefficients
+  edge.label.cex = 1,
+  label.cex = 1,
+
+  # Apparence
+  color = "white",
+  edge.color = "black",
+  fade = FALSE,
+  mar = c(5, 5, 5, 5)
+)
+
+
+
+
+```
+
+
+### CFA comparison 
+
+```{r}
+# Two-factor correlated model
+cfa_model_phq_2f <- '
+Somatic =~ item3 + item4 + item5 + item8
+
+CognitiveAffective =~ item1 + item2 + item6 + item7 + item9
+
+Somatic ~~ CognitiveAffective
+'
+
+fit_phq_2f <- cfa(
+  cfa_model_phq_2f,
+  data = data_efa_phq,
+  estimator = "WLSMV",
+  ordered = items_phq
+)
+
+# Model summary
+summary(
+  fit_phq_2f,
+  fit.measures = TRUE,
+  standardized = TRUE,
+  rsquare = TRUE
+)
+
+# Robust fit indices
+fitMeasures(
+  fit_phq_2f,
+  c(
+    "cfi.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+
+```
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+
+semPaths(
+  fit_phq_2f,
+  what = "std",
+  whatLabels = "std",
+  layout = "tree",
+  style = "lisrel",
+  rotation = 2,
+
+  # Masquer les paramètres supplémentaires
+  residuals = FALSE,
+  intercepts = FALSE,
+  thresholds = FALSE,
+
+  # Affichage des variables
+  nCharNodes = 0,
+  sizeMan = 7,
+  sizeLat = 10,
+
+  # Affichage des coefficients
+  edge.label.cex = 1,
+  
+label.cex = c(rep(1, 9), rep(1.5, 2)),
+
+  # Apparence
+  color = "white",
+  edge.color = "black",
+  fade = FALSE,
+  mar = c(5, 5, 5, 5)
+)
+
+
+
+```
+
+Bifactor model
+```{r}
+# Bifactor model
+cfa_model_phq_bifactor <- '
+# General factor
+General =~ item1 + item2 + item3 + item4 + item5 +
+           item6 + item7 + item8 + item9
+
+# Specific factors
+Somatic =~ item3 + item4 + item5 + item8
+
+CognitiveAffective =~ item1 + item2 + item6 + item7 + item9
+
+# Orthogonal factors
+General ~~ 0*Somatic
+General ~~ 0*CognitiveAffective
+Somatic ~~ 0*CognitiveAffective
+'
+
+fit_phq_bifactor <- cfa(
+  cfa_model_phq_bifactor,
+  data = data_efa_phq,
+  estimator = "WLSMV",
+  ordered = items_phq,
+  std.lv = TRUE
+)
+
+# Model summary
+summary(
+  fit_phq_bifactor,
+  fit.measures = TRUE,
+  standardized = TRUE,
+  rsquare = TRUE
+)
+
+# Robust fit indices
+fitMeasures(
+  fit_phq_bifactor,
+  c(
+    "cfi.robust",
+    "tli.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+```
+
+
+
+```{r}
+
+# Extract robust fit indices
+indices <- c(
+  "cfi.robust",
+  "rmsea.robust",
+  "rmsea.ci.lower.robust",
+  "rmsea.ci.upper.robust",
+  "srmr"
+)
+
+# Comparison table
+comparison_phq <- rbind(
+  Unidimensional = fitMeasures(fit_phq_1f, indices),
+  Two_factor = fitMeasures(fit_phq_2f, indices),
+  Bifactor = fitMeasures(fit_phq_bifactor, indices)
+)
+
+round(comparison_phq, 3)
+
+```
+
+Supplementary bifactorial indices
+
+```{r}
+# 1. Extraire les saturations factorielles standardisées
+L <- inspect(fit_phq_bifactor, "std")$lambda
+
+# Vérifier la structure
+print(L)
+
+# 2. Extraire les variances résiduelles standardisées
+theta <- diag(inspect(fit_phq_bifactor, "std")$theta)
+
+# 3. Saturations sur les trois facteurs
+g <- L[, "General"]
+s <- L[, "Somatic"]
+c <- L[, "CognitiveAffective"]
+
+# 4. Explained Common Variance (ECV)
+ECV <- sum(g^2) / sum(L^2)
+
+# 5. Omega total (omega)
+variance_totale_commune <- sum(colSums(L)^2)
+variance_erreur <- sum(theta)
+
+omega <- variance_totale_commune /
+  (variance_totale_commune + variance_erreur)
+
+# 6. Omega hiérarchique (omega H)
+omegaH <- sum(g)^2 /
+  (variance_totale_commune + variance_erreur)
+
+# 7. Afficher les résultats
+data.frame(
+  Index = c("Omega total", "Omega hierarchical", "ECV"),
+  Value = round(c(omega, omegaH, ECV), 3)
+)
+
+```
+
+## WHODAS-12
+### unidimensional CFA
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+data_efa_who <- data_efa_who %>%
+  rename(
+    item1 = `item 1`,
+    item2 = `item 2`,
+    item3 = `item 3`,
+    item4 = `item 4`,
+    item5 = `item 5`,
+    item6 = `item 6`,
+    item7 = `item 7`,
+    item8 = `item 8`,
+    item9 = `item 9`,
+    item10 = `item 10`,
+    item11 = `item 11`,
+    item12 = `item 12`
+  )
+```
+
+
+```{r}
+items_who <- paste0("item", 1:12)
+cfa_model <- '
+WHODAS12 =~ item1 + item2 + item3 + item4 +
+        item5 + item6 + item7 + item8 + item9 + item10 + item11 + item12
+'
+fit_who_1f <- cfa(
+  cfa_model,
+  data = data_efa_who,
+  estimator = "WLSMV",
+  ordered = items_who
+)
+summary(fit_who_1f, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+
+# Robust fit indices
+fitMeasures(
+  fit_who_1f,
+  c(
+    "cfi.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+
+
+```
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+
+semPaths(
+  fit_who_1f,
+  what = "std",
+  whatLabels = "std",
+  layout = "tree",
+  style = "lisrel",
+  rotation = 2,
+
+  # Masquer les paramètres supplémentaires
+  residuals = FALSE,
+  intercepts = FALSE,
+  thresholds = FALSE,
+
+  # Affichage des variables
+  nCharNodes = 0,
+  sizeMan = 7,
+  sizeLat = 10,
+
+  # Affichage des coefficients
+  edge.label.cex = 1,
+  
+label.cex = c(rep(1, 9), rep(1.5, 2)),
+
+  # Apparence
+  color = "white",
+  edge.color = "black",
+  fade = FALSE,
+  mar = c(5, 5, 5, 5)
+)
+
+
+
+```
+
+### CFA comparison
+
+```{r}
+model_who_6f <- '
+  Cognition =~ item3 + item6
+  Mobility =~ item1 + item7
+  SelfCare =~ item8 + item9
+  GettingAlong =~ item10 + item11
+  LifeActivities =~ item2 + item12
+  Participation =~ item4 + item5
+'
+
+fit_who_6f <- cfa(
+  model_who_6f,
+  data = data_efa_who,
+  estimator = "WLSMV",
+  ordered = items_who
+)
+
+summary(fit_who_6f, fit.measures = TRUE, standardized = TRUE)
+
+# Robust fit indices
+fitMeasures(
+  fit_who_6f,
+  c(
+    "cfi.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+```
+
+Additional informations 
+
+```{r}
+cov_lv <- lavInspect(fit_who_6f, "cov.lv")
+
+round(cov_lv, 3)
+
+eigen(cov_lv, symmetric = TRUE)$values
+
+x <- round(lavInspect(fit_who_6f, "cor.lv"), 3)
+
+# Heatmap
+corrplot(x,
+         method = "color",
+         type = "upper",
+         addCoef.col = "black",
+         tl.col = "black",
+         tl.srt = 45,
+         diag = FALSE)
+```
+
+
+
+```{r}
+model_who_2nd <- '
+  # Facteurs de premier ordre
+  Cognition =~ item3 + item6
+  Mobility =~ item1 + item7
+  SelfCare =~ item8 + item9
+  GettingAlong =~ item10 + item11
+  LifeActivities =~ item2 + item12
+  Participation =~ item4 + item5
+
+  # Facteur de second ordre
+  GeneralFunctioning =~ Cognition + Mobility +
+                        SelfCare + GettingAlong +
+                        LifeActivities + Participation
+'
+
+fit_who_2nd <- cfa(
+  model_who_2nd,
+  data = data_efa_who,
+  estimator = "WLSMV",
+  ordered = items_who
+)
+
+summary(fit_who_2nd, fit.measures = TRUE, standardized = TRUE)
+
+# Robust fit indices
+fitMeasures(
+  fit_who_2nd,
+  c(
+    "cfi.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+```
+
+## SSS-S 
+### unidimensional CFA
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+data_efa_sss <- data_efa_sss %>%
+  rename(
+    item1 = `item 1`,
+    item2 = `item 2`,
+    item3 = `item 3`,
+    item4 = `item 4`,
+    item5 = `item 5`,
+    item6 = `item 6`,
+    item7 = `item 7`,
+    item8 = `item 8`,
+    item9 = `item 9`
+  )
+```
+
+
+```{r}
+items_sss <- paste0("item", 1:9)
+cfa_model <- '
+SSS =~ item1 + item2 + item3 + item4 +
+        item5 + item6 + item7 + item8 + item9
+'
+fit_sss_1f <- cfa(
+  cfa_model,
+  data = data_efa_sss,
+  estimator = "WLSMV",
+  ordered = items_sss
+)
+summary(fit_sss_1f, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+
+# Robust fit indices
+fitMeasures(
+  fit_sss_1f,
+  c(
+    "cfi.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+
+
+```
+
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+
+semPaths(
+  fit_sss_1f,
+  what = "std",
+  whatLabels = "std",
+  layout = "tree",
+  style = "lisrel",
+  rotation = 2,
+
+  # Masquer les paramètres supplémentaires
+  residuals = FALSE,
+  intercepts = FALSE,
+  thresholds = FALSE,
+
+  # Affichage des variables
+  nCharNodes = 0,
+  sizeMan = 7,
+  sizeLat = 10,
+
+  # Affichage des coefficients
+  edge.label.cex = 1,
+  
+label.cex = 1,
+
+  # Apparence
+  color = "white",
+  edge.color = "black",
+  fade = FALSE,
+  mar = c(5, 5, 5, 5)
+)
+
+```
+
+
+### CFA comparison
+
+```{r}
+# Three-factor correlated model
+model_sss_3f <- '
+  Cognitive =~ item1 + item2 + item3
+  Affective =~ item4 + item5 + item6
+  Behavioural =~ item7 + item8 + item9
+'
+
+fit_sss_3f <- cfa(
+  model_sss_3f,
+  data = data_efa_sss,
+  estimator = "WLSMV",
+  ordered = items_sss
+)
+
+summary(fit_sss_3f, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+
+# Robust fit indices
+fitMeasures(
+  fit_sss_3f,
+  c(
+    "cfi.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+
+# Correlations between latent factors
+round(lavInspect(fit_sss_3f, "cor.lv"), 3)
+
+# Check for negative residual variances
+lavInspect(fit_sss_3f, "theta")
+
+# Check eigenvalues of the latent covariance matrix
+eigen(lavInspect(fit_sss_3f, "cov.lv"), symmetric = TRUE)$values
+```
+Bifactor model 
+```{r}
+
+cfa_model_sss_bifactor <- '
+# General factor
+General =~ item1 + item2 + item3 + item4 + item5 +
+           item6 + item7 + item8 + item9
+
+# Specific factors
+  Cognitive =~ item1 + item2 + item3
+  Affective =~ item4 + item5 + item6
+  Behavioural =~ item7 + item8 + item9
+
+ # Orthogonality between general and specific factors
+  General ~~ 0*Cognitive
+  General ~~ 0*Affective
+  General ~~ 0*Behavioural
+
+  # Orthogonality between specific factors
+  Cognitive ~~ 0*Affective
+  Cognitive ~~ 0*Behavioural
+  Affective ~~ 0*Behavioural
+'
+
+fit_sss_bifactor <- cfa(
+  cfa_model_sss_bifactor,
+  data = data_efa_sss,
+  estimator = "WLSMV",
+  ordered = items_sss,
+  std.lv = TRUE
+)
+
+# Model summary
+summary(
+  fit_sss_bifactor,
+  fit.measures = TRUE,
+  standardized = TRUE,
+  rsquare = TRUE
+)
+
+# Robust fit indices
+fitMeasures(
+  fit_sss_bifactor,
+  c(
+    "cfi.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+```
+
+
+### Exploration of the 14 items structure 
+
+```{r}
+# si tu veux je ne souhaite pas rep = NA -> peut etre en sensibility analysis 
+#dat_stigma <- dat %>%
+ # mutate(
+   # Stigma_ext_1 = na_if(Stigma_ext_1, "Je ne préfère pas répondre à cette question"),
+    #Stigma_ext_2 = na_if(Stigma_ext_2, "Je ne préfère pas répondre à cette question"),
+    #Stigma_ext_3 = na_if(Stigma_ext_3, "Je ne préfère pas répondre à cette question"),
+    #Stigma_ext_4 = na_if(Stigma_ext_4, "Je ne préfère pas répondre à cette question"),
+    #Stigma_ext_5 = na_if(Stigma_ext_5, "Je ne préfère pas répondre à cette question")
+ # )
+# si tu veux je ne souhaite pas rep = 0 et non NA alors met dat_stigma <- dat %>% 
+dat_stigma <- dat %>% 
+  mutate(
+    Stigma_ext_1 = as.numeric(Stigma_ext_1 == "Oui"),
+    Stigma_ext_2 = as.numeric(Stigma_ext_2 == "Oui"),
+    Stigma_ext_3 = as.numeric(Stigma_ext_3 == "Oui"),
+    Stigma_ext_4 = as.numeric(Stigma_ext_4 == "Non"),
+    Stigma_ext_5 = as.numeric(Stigma_ext_5 == "Oui")
+  )
+
+# Sélectionner les 14 items
+items_all <- dat_stigma %>%
+  dplyr::select(
+    stigma_auto_1:stigma_auto_9,
+    Stigma_ext_1:Stigma_ext_5
+  )
+
+# Vérifier les distributions et les valeurs manquantes
+summary(items_all)
+
+# Matrice de corrélations polychoriques
+cor_all <- psych::polychoric(
+  items_all,
+  correct = 0.5
+)$rho
+
+round(cor_all, 3)
+
+# Visualisation
+library(corrplot)
+
+corrplot(
+  cor_all,
+  method = "color",
+  type = "upper",
+  addCoef.col = "black",
+  tl.col = "black",
+  tl.srt = 45,
+  diag = FALSE
+)
+
+# Test de Kaiser-Meyer-Olkin
+KMO(cor_all)
+
+# Test de sphéricité de Bartlett
+cortest.bartlett(
+  cor_all,
+  n = nrow(items_all)
+)
+```
+
+
+```{r}
+# Valeurs propres de la matrice de corrélations
+eigenvalues <- eigen(cor_all, symmetric = TRUE)$values
+
+round(eigenvalues, 3)
+
+# Scree plot
+plot(
+  eigenvalues,
+  type = "b",
+  pch = 19,
+  xlab = "Factor number",
+  ylab = "Eigenvalue",
+  main = "Scree plot – 14 stigma items",
+  xaxt = "n"
+)
+
+axis(1, at = 1:length(eigenvalues))
+abline(h = 1, lty = 2, col = "grey50")
+```
+
+```{r}
+set.seed(123)
+
+fa.parallel(
+  items_all,
+  fa = "fa",
+  cor = "poly",
+  fm = "minres",
+  n.iter = 100,
+  main = "Parallel analysis – 14 stigma items"
+)
+```
+
+
+### Avec lavaan -> comparaison des 4 facteurs 
+
+```{r}
+items_all <- dat_stigma %>%
+  dplyr::select(
+    stigma_auto_1:stigma_auto_9,
+    Stigma_ext_1:Stigma_ext_5
+  )
+efa_stigma <- lavaan::efa(
+  data = items_all,
+  nfactors = 1:4,
+  ordered = TRUE,
+  estimator = "WLSMV",
+  rotation = "geomin"
+)
+
+
+# Résultats détaillés des quatre solutions
+summary(efa_stigma, nd = 3)
+```
+
+
+### CFA comparaison 1 ou 2 facteurs corrélés 
+
+```{r}
+# -------------------------
+# Modèle à 1 facteur
+# -------------------------
+items_all <- c(
+  "stigma_auto_1",
+  "stigma_auto_2",
+  "stigma_auto_3",
+  "stigma_auto_4",
+  "stigma_auto_5",
+  "stigma_auto_6",
+  "stigma_auto_7",
+  "stigma_auto_8",
+  "stigma_auto_9",
+  "Stigma_ext_1",
+  "Stigma_ext_2",
+  "Stigma_ext_3",
+  "Stigma_ext_4",
+  "Stigma_ext_5"
+)
+model_1f <- '
+Stigma =~ stigma_auto_1 + stigma_auto_2 + stigma_auto_3 +
+          stigma_auto_4 + stigma_auto_5 + stigma_auto_6 +
+          stigma_auto_7 + stigma_auto_8 + stigma_auto_9 +
+          Stigma_ext_1 + Stigma_ext_2 + Stigma_ext_3 +
+          Stigma_ext_4 + Stigma_ext_5
+'
+
+fit_1f <- cfa(
+  model_1f,
+  data = dat_stigma,
+  ordered = items_all,
+  estimator = "WLSMV",
+  std.lv = TRUE
+)
+
+# -------------------------
+# Modèle à 2 facteurs corrélés
+# -------------------------
+
+model_2f <- '
+SelfStigma =~ stigma_auto_1 + stigma_auto_2 + stigma_auto_3 +
+             stigma_auto_4 + stigma_auto_5 + stigma_auto_6 +
+             stigma_auto_7 + stigma_auto_8 + stigma_auto_9
+
+ExternalStigma =~ Stigma_ext_1 + Stigma_ext_2 + Stigma_ext_3 +
+                  Stigma_ext_4 + Stigma_ext_5
+'
+
+fit_2f <- cfa(
+  model_2f,
+  data = dat_stigma,
+  ordered = items_all,
+  estimator = "WLSMV",
+  std.lv = TRUE
+)
+
+rbind(
+  "1 facteur" = fitMeasures(
+    fit_1f,
+    c(
+      "cfi.robust",
+      "rmsea.robust",
+      "rmsea.ci.lower.robust",
+      "rmsea.ci.upper.robust",
+      "srmr"
+    )
+  ),
+  "2 facteurs" = fitMeasures(
+    fit_2f,
+    c(
+      "cfi.robust",
+      "rmsea.robust",
+      "rmsea.ci.lower.robust",
+      "rmsea.ci.upper.robust",
+      "srmr"
+    )
+  )
+)
+
+lavTestLRT(fit_1f, fit_2f)
+
+pe <- parameterEstimates(
+  fit_2f,
+  ci = TRUE,
+  standardized = TRUE
+)
+
+pe[
+  pe$lhs == "SelfStigma" &
+  pe$op == "~~" &
+  pe$rhs == "ExternalStigma",
+  c("lhs", "rhs", "est", "ci.lower", "ci.upper", "pvalue")
+]
+
+
+pe[
+  pe$lhs == "ExternalStigma" &
+  pe$op == "=~",
+  c("rhs", "std.all", "ci.lower", "ci.upper", "pvalue")
+]
+```
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+
+semPaths(
+  fit_1f,
+  what = "std",
+  whatLabels = "std",
+  layout = "tree",
+  style = "lisrel",
+  rotation = 2,
+
+  # Masquer les paramètres supplémentaires
+  residuals = FALSE,
+  intercepts = FALSE,
+  thresholds = FALSE,
+
+  # Affichage des variables
+  nCharNodes = 0,
+  sizeMan = 7,
+  sizeLat = 10,
+
+  # Affichage des coefficients
+  edge.label.cex = 1,
+  
+label.cex = 3,
+
+  # Apparence
+  color = "white",
+  edge.color = "black",
+  fade = FALSE,
+  mar = c(5, 5, 5, 5)
+)
+
+```
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+
+semPaths(
+  fit_2f,
+  what = "std",
+  whatLabels = "std",
+  layout = "tree",
+  style = "lisrel",
+  rotation = 2,
+
+  # Masquer les paramètres supplémentaires
+  residuals = FALSE,
+  intercepts = FALSE,
+  thresholds = FALSE,
+
+  # Affichage des variables
+  nCharNodes = 0,
+  sizeMan = 7,
+  sizeLat = 10,
+
+  # Affichage des coefficients
+  edge.label.cex = 1,
+  
+label.cex = 3,
+
+  # Apparence
+  color = "white",
+  edge.color = "black",
+  fade = FALSE,
+  mar = c(5, 5, 5, 5)
+)
+
+```
+
+### CFA 2 facteurs issu de l'EFA  
+
+```{r}
+
+items_all <- c(
+  "stigma_auto_1",
+  "stigma_auto_2",
+  "stigma_auto_3",
+  "stigma_auto_4",
+  "stigma_auto_5",
+  "stigma_auto_6",
+  "stigma_auto_7",
+  "stigma_auto_8",
+  "stigma_auto_9",
+  "Stigma_ext_1",
+  "Stigma_ext_2",
+  "Stigma_ext_3",
+  "Stigma_ext_4",
+  "Stigma_ext_5"
+)
+
+
+model_2f_efa <- '
+F1 =~ stigma_auto_1 + stigma_auto_2 + stigma_auto_3 +
+             stigma_auto_4 + stigma_auto_5 + stigma_auto_6 +
+             stigma_auto_7 + stigma_auto_8 + stigma_auto_9 + Stigma_ext_2 
+
+F2 =~ Stigma_ext_1 + Stigma_ext_3 +
+                  Stigma_ext_4 + Stigma_ext_5
+'
+
+fit_2f_efa <- cfa(
+  model_2f_efa,
+  data = dat_stigma,
+  ordered = items_all,
+  estimator = "WLSMV",
+  std.lv = TRUE
+)
+
+summary(fit_2f_efa, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+# Robust fit indices
+fitMeasures(
+  fit_2f_efa,
+  c(
+    "cfi.robust",
+    "rmsea.robust",
+    "rmsea.ci.lower.robust",
+    "rmsea.ci.upper.robust",
+    "srmr"
+  )
+)
+```
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+
+semPaths(
+  fit_2f_efa,
+  what = "std",
+  whatLabels = "std",
+  layout = "tree",
+  style = "lisrel",
+  rotation = 2,
+
+  # Masquer les paramètres supplémentaires
+  residuals = FALSE,
+  intercepts = FALSE,
+  thresholds = FALSE,
+
+  # Affichage des variables
+  nCharNodes = 0,
+  sizeMan = 7,
+  sizeLat = 10,
+
+  # Affichage des coefficients
+  edge.label.cex = 1,
+  
+label.cex = 3,
+
+  # Apparence
+  color = "white",
+  edge.color = "black",
+  fade = FALSE,
+  mar = c(5, 5, 5, 5)
+)
+
+```
+
+# S5. Exploratory hypothesis testing {.tabset}
+
+## Convergent validity
+
+### Simple correlation
+
+```{r, warning=FALSE}
+
+dat_bis <- dat %>%
+  dplyr::select(score_PHQ9, Score_autostigma, Score_BIPQ, Score_whodas, score_GAD7)
+
+cor_spearman2 <- cor(dat_bis$Score_BIPQ, dat_bis$score_PHQ9, method = "spearman", use = "complete.obs")
+cor.test(dat_bis$Score_BIPQ, dat_bis$score_PHQ9, method = "spearman")
+
+cor_spearman3 <- cor(dat_bis$Score_BIPQ, dat_bis$score_GAD7, method = "spearman", use = "complete.obs")
+
+cor.test(dat_bis$Score_BIPQ, dat_bis$score_GAD7, method = "spearman")
+
+
+```
+
+### Latent model
+
+### BIPQ \~ PHQ9
+
+####  Freely estimated latent correlations
+
+```{r,  echo=FALSE, message=FALSE,  warning=FALSE}
+
+dat <- dat %>%
+  rename(
+    item1 = `item 1`,
+    item2 = `item 2`,
+    item3 = `item 3`,
+    item4 = `item 4`,
+    item5 = `item 5`,
+    item6 = `item 6`,
+    item7 = `item 7`,
+    item8 = `item 8`
+  )
+
+var_phq <- c("id_unik", "score_PHQ9", "interet_plaisir",	"triste_deprime",	"sommeil",	"fatigue",	"appetit",	"opinion_soi",	"concentration",	"activite",	"consequence_pb",
+             
+             "Score_BIPQ", "item1", "item2", "item3", "item4","item5", "item6", "item7", "item8"
+)
+data_phq <-dat[, c(var_phq)]
+```
+
+
+```{r, warning=FALSE}
+
+
+cfa_model_PHQ <- '
+BIPQ =~ item1 + item5 + item6 + item8 + item3 + item4 + item7 + item2
+PHQ9 =~ interet_plaisir + triste_deprime + sommeil + fatigue + appetit + opinion_soi + concentration + activite + consequence_pb
+BIPQ ~~ PHQ9'
+
+fit_PHQ <- cfa(cfa_model_PHQ, 
+               data = data_phq, 
+               estimator = "MLR", 
+               std.lv = TRUE,
+               missing   = "fiml")
+
+#summary(fit_PHQ, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+fitMeasures(fit_PHQ, c("cfi", "tli", "rmsea", "srmr"))
+
+
+# 95% confidence interval for the latent variable correlation
+latcorPHQ <- parameterEstimates(fit_PHQ, standardized = TRUE, ci = TRUE)
+
+# Result of interest
+subset(latcorPHQ, lhs == "BIPQ" & rhs == "PHQ9" & op == "~~")[, 
+        c("est", "ci.lower", "ci.upper", "pvalue")]
+
+```
+
+#### Constrained two-factor models (correlation == 0.9)
+
+```{r, warning=FALSE}
+cfa_PHQ_corr <- '
+BIPQ =~ item1 + item5 + item6 + item8 + item3 + item4 + item7 + item2
+PHQ9 =~ interet_plaisir + triste_deprime + sommeil + fatigue + appetit + opinion_soi + concentration + activite + consequence_pb
+BIPQ ~~ 0.9*PHQ9
+'
+fit_PHQ_corr <- cfa(cfa_PHQ_corr,
+                    data = data_phq,
+                    estimator = "MLR", 
+                    std.lv = TRUE,
+                    missing   = "fiml")
+
+#summary(fit_PHQ_corr, fit.measures = TRUE, standardized = TRUE)
+fitMeasures(fit_PHQ_corr, c("cfi", "tli", "rmsea", "srmr"))
+
+```
+
+Comparison using scaled chi-square difference tests with the Satorra–Bentler 2010 correction.
+ 
+```{r}
+lavTestLRT(
+  fit_PHQ,
+  fit_PHQ_corr,
+  method = "satorra.bentler.2010"
+)
+```
+
+
+
+#### One factor model
+
+```{r}
+cfa_model_PHQ_1 <- '
+BIPQPHQ9 =~ item1 + item5 + item6 + item8 + item3 + item4 + item7 + item2
+ + interet_plaisir + triste_deprime + sommeil + fatigue + appetit + opinion_soi + concentration + activite + consequence_pb
+'
+fit_PHQ_1 <- cfa(cfa_model_PHQ_1, 
+                 data = data_phq, 
+                 estimator = "MLR", 
+                 std.lv = TRUE,
+                 missing   = "fiml")
+
+#summary(fit_PHQ_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+fitMeasures(fit_PHQ_1, c("cfi", "tli", "rmsea", "srmr"))
+
+```
+
+### BIPQ\~GAD7
+
+#### Freely estimated latent correlations
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+var_gad <- c("id_unik", "score_GAD7", "nerveux",	"inquiet",	"inquiet_exces",	"difficult_detente",	"agitation",	"tendance_contrarie",	"sentiment_peur",
+             "Score_BIPQ", "item1", "item2", "item3", "item4","item5", "item6", "item7", "item8"
+)
+data_gad<-dat[, c(var_gad)]
+```
+
+
+```{r}
+
+cfa_model_GAD <- '
+BIPQ =~ item1 + item5 + item6 + item8 + item3 + item4 + item7 + item2
+GAD7 =~ nerveux + inquiet + inquiet_exces + difficult_detente + agitation + tendance_contrarie + sentiment_peur
+BIPQ ~~ GAD7'
+
+
+fit_GAD <- cfa(
+  cfa_model_GAD,
+  data = data_gad,
+  estimator = "MLR",
+  std.lv = TRUE,
+  missing = "fiml"
+)
+
+#summary(fit_GAD, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+fitMeasures(fit_GAD, c("cfi", "tli", "rmsea", "srmr"))
+
+# 95% confidence interval for the latent variable correlation
+latcorGAD <- parameterEstimates(fit_GAD, standardized = TRUE, ci = TRUE)
+
+# Result of interest
+subset(latcorGAD, lhs == "BIPQ" & rhs == "GAD7" & op == "~~")[, 
+       c("est", "ci.lower", "ci.upper", "pvalue")]
+
+```
+
+
+
+#### Constrained two-factor models (correlation == 0.9)
+
+```{r}
+cfa_GAD_corr <- '
+BIPQ =~ item1 + item5 + item6 + item8 + item3 + item4 + item7 + item2
+GAD7 =~ nerveux + inquiet + inquiet_exces + difficult_detente + agitation + tendance_contrarie + sentiment_peur
+BIPQ ~~ 0.9*GAD7
+'
+
+fit_GAD_corr <- cfa(cfa_GAD_corr, 
+                    data = data_gad,
+                    estimator = "MLR",
+                    std.lv = TRUE,
+                    missing = "fiml" 
+)
+
+#summary(fit_GAD_corr, fit.measures = TRUE, standardized = TRUE)
+fitMeasures(fit_GAD_corr, c("cfi", "tli", "rmsea", "srmr"))
+
+```
+
+Comparison using scaled chi-square difference tests with the Satorra–Bentler 2010 correction.
+
+```{r}
+lavTestLRT(
+  fit_GAD,
+  fit_GAD_corr,
+  method = "satorra.bentler.2010"
+)
+```
+
+#### One factor model
+
+```{r}
+cfa_model_GAD_1 <- '
+BIPQGAD =~ item1 + item5 + item6 + item8 + item3 + item4 + item7 + item2
+ + nerveux + inquiet + inquiet_exces + difficult_detente + agitation + tendance_contrarie + sentiment_peur
+'
+
+fit_GAD_1 <- cfa(
+  cfa_model_GAD_1,
+  data = data_gad,
+  estimator = "MLR",
+  std.lv = TRUE,
+  missing = "fiml")
+
+#summary(fit_GAD_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+
+fitMeasures(fit_GAD_1, c("cfi", "tli", "rmsea", "srmr"))
+```
+
+## Discriminant validity
+
+### Simple correlation
+
+```{r}
+cor_spearman <- cor(dat_bis$Score_BIPQ, dat_bis$Score_autostigma, method = "spearman", use = "complete.obs")
+cor.test(dat_bis$Score_BIPQ, dat_bis$Score_autostigma, method = "spearman")
+
+
+```
+
+### Latent model
+
+####  Freely estimated latent correlations
+
+```{r,  echo=FALSE, message=FALSE,  warning=FALSE}
+var_sss <- c("id_unik", "Score_autostigma", "stigma_auto_1",	"stigma_auto_2",	"stigma_auto_3",	"stigma_auto_4",	"stigma_auto_5",	"stigma_auto_6",	"stigma_auto_7", "stigma_auto_8", "stigma_auto_9",
+             "Score_BIPQ", "item1", "item2", "item3", "item4","item5", "item6", "item7", "item8"
+)
+data_sss <-dat[, c(var_sss)]
+```
+
+
+```{r}
+cfa_model_SSS <- '
+BIPQ =~ item1 + item5 + item6 + item8 + item3 + item4 + item7 + item2
+SSS =~ stigma_auto_1 + stigma_auto_2 + stigma_auto_3 + stigma_auto_4 + stigma_auto_5 + stigma_auto_6 + stigma_auto_7 + stigma_auto_8 + stigma_auto_9
+BIPQ ~~ SSS'
+
+fit_SSS <- cfa(cfa_model_SSS, 
+               data = data_sss, 
+               estimator = "MLR",
+               std.lv = TRUE,
+               missing = "fiml")
+
+#summary(fit_SSS, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+fitMeasures(fit_SSS, c("cfi", "tli", "rmsea", "srmr"))
+
+
+# 95% confidence interval for the latent variable correlation
+latcorSSS <- parameterEstimates(fit_SSS, standardized = TRUE, ci = TRUE)
+
+# Result of interest
+subset(latcorSSS, lhs == "BIPQ" & rhs == "SSS" & op == "~~")[, 
+       c("est", "ci.lower", "ci.upper", "pvalue")]
+```
+
+#### Constrained two-factor models (correlation == 0.9)
+
+```{r}
+cfa_SSS_corr <- '
+BIPQ =~ item1 + item5 + item6 + item8 + item3 + item4 + item7 + item2
+SSS =~ stigma_auto_1 + stigma_auto_2 + stigma_auto_3 + stigma_auto_4 + stigma_auto_5 + stigma_auto_6 + stigma_auto_7 + stigma_auto_8 + stigma_auto_9
+BIPQ ~~ 0.9*SSS
+'
+
+fit_SSS_corr <- cfa(cfa_SSS_corr,
+                    data = data_sss,
+                    estimator = "MLR",
+                    std.lv = TRUE,
+                    missing = "fiml")
+
+#summary(fit_SSS_corr, fit.measures = TRUE, standardized = TRUE)
+fitMeasures(fit_SSS_corr, c("cfi", "tli", "rmsea", "srmr"))
+
+```
+
+Comparison using scaled chi-square difference tests with the Satorra–Bentler 2010 correction.
+
+```{r}
+lavTestLRT(fit_SSS, fit_SSS_corr, method = "satorra.bentler.2010")
+```
+
+#### One factor model
+
+```{r}
+
+cfa_model_SSS_1 <- '
+BIPQSSS =~ item1 + item5 + item6 + item8 + item3 + item4 + item7 + item2
+ + stigma_auto_1 + stigma_auto_2 + stigma_auto_3 + stigma_auto_4 + stigma_auto_5 + stigma_auto_6 + stigma_auto_7 + stigma_auto_8 + stigma_auto_9
+'
+fit_SSS_1 <- cfa(cfa_model_SSS_1, 
+                 data = data_sss, 
+                 estimator = "MLR",
+                 std.lv = TRUE,
+                 missing = "fiml")
+
+#summary(fit_SSS_1, fit.measures = TRUE, standardized = TRUE, rsquare = TRUE)
+fitMeasures(fit_SSS_1, c("cfi", "tli", "rmsea", "srmr"))
+
+```
+
+# S6. Incremental validity {.tabset}
+
+## With anova
+
+```{r}
+dat_bis <- dat %>%
+  dplyr::select(
+    age, Sexe, score_PHQ9, Score_autostigma,
+    Score_BIPQ, Score_whodas, score_GAD7
+  )
+
+dat_clean <- dat_bis[complete.cases(dat_bis), ]
+
+r2 <- function(m) summary(m)$r.squared
+
+model1 <- lm(
+  Score_whodas ~ age + Sexe,
+  data = dat_clean
+)
+
+model2 <- lm(
+  Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + score_GAD7,
+  data = dat_clean
+)
+
+model3 <- lm(
+  Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ,
+  data = dat_clean
+)
+
+# ANOVA hiérarchique
+anova_results <- anova(model1, model2, model3)
+
+print(anova_results)
+```
+
+
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+r2_table <- data.frame(
+  Model = c(
+    "Step 1: age + sex",
+    "Step 2: + PHQ-9 + SSS-S + GAD-7",
+    "Step 3: + BIPQ"
+  ),
+  R2 = c(
+    r2(model1),
+    r2(model2),
+    r2(model3)
+  )
+)
+
+r2_table$Delta_R2 <- c(
+  NA,
+  r2_table$R2[2] - r2_table$R2[1],
+  r2_table$R2[3] - r2_table$R2[2]
+)
+
+
+r2_table_round <- r2_table %>%
+  dplyr::mutate(
+    R2 = round(R2, 3),
+    Delta_R2 = round(Delta_R2, 3)
+  )
+
+print(r2_table_round)
+```
+
+
+
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+
+dat_bis <- dat %>%
+  dplyr::select(age, Sexe, score_PHQ9, Score_autostigma, Score_BIPQ, Score_whodas, score_GAD7)
+
+## Commonality analysis 
+dat_clean <- dat_bis[complete.cases(dat_bis[, c("Score_whodas",
+                                             "score_PHQ9",
+                                             "Score_autostigma",
+                                             "score_GAD7",
+                                             "Score_BIPQ")]), ]
+
+r2 <- function(m) summary(m)$r.squared
+
+model1 <- lm(
+  Score_whodas ~ age + Sexe,
+  data = dat_clean
+)
+
+model2 <- lm(
+  Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + score_GAD7,
+  data = dat_clean
+)
+
+model3 <- lm(
+  Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ,
+  data = dat_clean
+)
+
+r2_1 <- r2(model1)
+r2_2 <- r2(model2)
+r2_3 <- r2(model3)
+
+r2_table <- data.frame(
+  Model = c("Step 1: age + sex",
+            "Step 2: + PHQ-9 + SSS-S + GAD-7",
+            "Step 3: + BIPQ"),
+  R2 = c(r2(model1), r2(model2), r2(model3))
+)
+
+r2_table$Delta_R2 <- c(NA, diff(r2_table$R2))
+
+r2_table$R2_percent <- round(r2_table$R2 * 100, 2)
+r2_table$Delta_R2_percent <- round(r2_table$Delta_R2 * 100, 2)
+
+r2_table
+
+# Ordre des composants
+order_blocks <- c(
+  "Age + sex",
+  "PHQ-9 + SSS-S + GAD-7",
+  "BIPQ",
+  "Unexplained"
+)
+
+fill_blocks <- c(
+  "Age + sex"                    = "#3A67A4",
+  "PHQ-9 + SSS-S + GAD-7"  = "#B2A5D1",
+  "BIPQ"                         = "#29A274",
+  "Unexplained"                  = "#E9E7E1"
+)
+
+# Table des incréments
+block_table <- tibble(
+  Component = c(
+    "Age + sex",
+    "PHQ-9 + SSS-S + GAD-7",
+    "BIPQ",
+    "Unexplained"
+  ),
+  Value = c(
+    r2_1,
+    r2_2 - r2_1,
+    r2_3 - r2_2,
+    1 - r2_3
+  )
+) %>%
+  mutate(
+    Percent = Value * 100,
+    Label = sprintf("%.2f%%", Percent),
+    Component = factor(Component, levels = order_blocks)
+  ) %>%
+  arrange(Component) %>%
+  mutate(
+    xmin = lag(cumsum(Percent), default = 0),
+    xmax = cumsum(Percent),
+    xmid = (xmin + xmax) / 2,
+    
+    # Label BIPQ placé au-dessus car segment trop petit
+    label_x = ifelse(Component == "BIPQ", xmax + 3, xmid),
+    label_y = ifelse(Component == "BIPQ", 1.32, 1)
+  )
+
+
+ggplot(block_table) +
+  geom_rect(
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 0.8,
+      ymax = 1.2,
+      fill = Component
+    )
+  ) +
+  geom_text(
+    aes(
+      x = label_x,
+      y = label_y,
+      label = Label
+    ),
+    size = 3.3
+  ) +
+  geom_segment(
+    data = block_table %>% filter(Component == "BIPQ"),
+    aes(
+      x = xmid,
+      xend = label_x,
+      y = 1.18,
+      yend = 1.27
+    ),
+    linewidth = 0.3
+  ) +
+  scale_fill_manual(
+    values = fill_blocks,
+    breaks = order_blocks[order_blocks != "Unexplained"],
+    name = NULL
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 100, 10),
+    labels = function(x) paste0(x, "%"),
+    limits = c(0, 105),
+    expand = c(0, 0)
+  ) +
+  labs(
+    x = "Percentage of WHODAS-12 variance",
+    y = NULL,
+    title = sprintf("WHODAS-12 — hierarchical explained variance, total R² = %.2f%%", r2_3 * 100)
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+```
+
+
+```{r, echo=FALSE, message=FALSE,  warning=FALSE}
+# =========================
+# 1. Calcul des variances uniques
+# =========================
+
+r2 <- function(m) summary(m)$r.squared
+
+model_full <- lm(
+  Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ,
+  data = dat_clean
+)
+
+r2_full <- r2(model_full)
+
+unique_table_block <- tibble(
+  Predictor = c(
+    "Age + sex",
+    "PHQ-9",
+    "Self-stigma",
+    "GAD-7",
+    "BIPQ"
+  ),
+  Unique_R2 = c(
+    # Age + sex retirés ensemble
+    r2_full - r2(lm(
+      Score_whodas ~ score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ,
+      data = dat_clean
+    )),
+    
+    # PHQ-9 retiré
+    r2_full - r2(lm(
+      Score_whodas ~ age + Sexe + Score_autostigma + score_GAD7 + Score_BIPQ,
+      data = dat_clean
+    )),
+    
+    # Self-stigma retiré
+    r2_full - r2(lm(
+      Score_whodas ~ age + Sexe + score_PHQ9 + score_GAD7 + Score_BIPQ,
+      data = dat_clean
+    )),
+    
+    # GAD-7 retiré
+    r2_full - r2(lm(
+      Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + Score_BIPQ,
+      data = dat_clean
+    )),
+    
+    # BIPQ retiré
+    r2_full - r2(lm(
+      Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + score_GAD7,
+      data = dat_clean
+    ))
+  )
+) %>%
+  mutate(
+    Percent = Unique_R2 * 100,
+    Label = sprintf("%.2f%%", Percent)
+  )
+
+# =========================
+# 2. Préparation du graphique
+# =========================
+
+unique_plot <- unique_table_block %>%
+  transmute(
+    Component = Predictor,
+    Percent = Percent
+  ) %>%
+  mutate(
+    Component = recode(Component, "Self-stigma" = "SSS-S")
+  ) %>%
+  arrange(desc(Percent)) %>%
+  mutate(
+    Component = factor(Component, levels = Component),
+    Label = sprintf("%.2f%%", Percent),
+    
+    xmin = lag(cumsum(Percent), default = 0),
+    xmax = cumsum(Percent),
+    xmid = (xmin + xmax) / 2,
+    
+    label_text = case_when(
+      Component == "SSS-S" ~ paste0("SSS-S: ", Label),
+      Component == "BIPQ"  ~ paste0("BIPQ: ", Label),
+      TRUE ~ Label
+    ),
+    
+    label_x = case_when(
+      Component == "SSS-S" ~ xmid,
+      Component == "BIPQ"  ~ xmax + 0.75,
+      TRUE ~ xmid
+    ),
+    
+    label_y = case_when(
+      Component == "SSS-S" ~ 1.55,
+      Component == "BIPQ"  ~ 1.00,
+      TRUE ~ 1.00
+    ),
+    
+    hjust_label = case_when(
+      Component == "BIPQ" ~ 0,
+      TRUE ~ 0.5
+    )
+  )
+
+# =========================
+# 3. Graphique
+# =========================
+
+fill_unique <- c(
+  "PHQ-9"     = "#3A67A4",
+  "GAD-7"     = "#60CDA0",
+  "Age + sex" = "#B2A5D1",
+  "SSS-S"     = "#E68613",
+  "BIPQ"      = "#7B2CBF"
+)
+
+ggplot(unique_plot) +
+  geom_rect(
+    aes(
+      xmin = xmin,
+      xmax = xmax,
+      ymin = 0.8,
+      ymax = 1.2,
+      fill = Component
+    )
+  ) +
+  
+  geom_text(
+    aes(
+      x = label_x,
+      y = label_y,
+      label = label_text,
+      hjust = hjust_label
+    ),
+    size = 3.3
+  ) +
+  
+  # Trait vertical pour SSS-S
+  geom_segment(
+    data = unique_plot %>% filter(Component == "SSS-S"),
+    aes(
+      x = xmid,
+      xend = xmid,
+      y = 1.2,
+      yend = 1.45
+    ),
+    linewidth = 0.3
+  ) +
+  
+  # Trait horizontal pour BIPQ
+  geom_segment(
+    data = unique_plot %>% filter(Component == "BIPQ"),
+    aes(
+      x = xmax,
+      xend = label_x - 0.15,
+      y = 1.0,
+      yend = 1.0
+    ),
+    linewidth = 0.3
+  ) +
+  
+  scale_fill_manual(
+    values = fill_unique,
+    breaks = levels(unique_plot$Component),
+    name = NULL,
+    guide = guide_legend(nrow = 1, byrow = TRUE)
+  ) +
+  
+  scale_x_continuous(
+    breaks = seq(0, 14, 1),
+    labels = function(x) paste0(x, "%"),
+    limits = c(0, 14),
+    expand = c(0, 0)
+  ) +
+  
+  coord_cartesian(ylim = c(0.75, 1.70), clip = "off") +
+  
+  labs(
+    x = "Unique variance explained in WHODAS-12",
+    y = NULL,
+    title = "WHODAS-12 — unique contributions"
+  ) +
+  
+  theme_minimal(base_size = 11) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank(),
+    legend.spacing.x = unit(0.8, "cm"),
+    legend.key.width = unit(0.9, "cm"),
+    legend.text = element_text(size = 9),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+```
+
+
+
+## with yhat
+
+Commonality analysis
+
+```{r}
+# Modèle final
+res_lm <- lm(
+  Score_whodas ~ age + Sexe + score_PHQ9 + Score_autostigma + score_GAD7 + Score_BIPQ,
+  data = dat_clean
+)
+
+# Commonality analysis
+res_common <- calc.yhat(res_lm)
+
+# Bootstrap 1000 resamples
+boot_out <- boot(
+  data = dat_clean,
+  statistic = yhat::boot.yhat,
+  R = 1000,
+  lmOut = res_lm,
+  regrout0 = res_common
+)
+
+# IC 95% percentile
+boot_results <- booteval.yhat(
+  res_common,
+  boot_out,
+  bty = "perc",
+  .95,
+  3
+)
+
+# Results
+print(res_common$PredictorMetrics)
+print(res_common$OrderedPredictorMetrics)
+print(res_common$PairedDominanceMetrics)
+
+
+# Incremental contribution of the BIPQ to WHODAS-12 explained variance
+bipq_incremental <- boot_results$combCIaps[
+  "age,Sexe,score_PHQ9,Score_autostigma,score_GAD7",
+  "Score_BIPQ.Inc"
+]
+
+print(bipq_incremental)
+```
+
+
+
+
+
+
+
+
+
+
